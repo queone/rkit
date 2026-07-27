@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    match rkit::run(std::env::args_os().skip(1)) {
+    match rkit::tree::run(std::env::args_os().skip(1)) {
         Ok(output) => {
             if let Err(error) = io::stdout().write_all(output.stdout().as_bytes()) {
                 eprintln!("write tree output: {error}; verify standard output is writable");

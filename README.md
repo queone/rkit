@@ -1,19 +1,45 @@
 # rkit
 
-`rkit` provides small, standalone Rust command-line utilities. Its first
-binary, `tree`, prints a lightweight view of a directory hierarchy.
+`rkit` provides small, standalone Rust command-line utilities. It currently
+includes `tree` for directory hierarchies and `dos2unix` for previewing or
+converting CRLF line endings.
 
 ## Why
 
-Use `rkit` when the platform `tree` utility is unavailable or when a compact,
-cross-platform implementation is preferable. The package uses only the Rust
-standard library.
+Use `rkit` when compact, cross-platform implementations of common command-line
+tools are preferable. The package uses only the Rust standard library.
 
 ## Install
 
-Install the stable Rust toolchain, then run:
+On macOS, first confirm that the Xcode Command Line Tools are active:
 
 ```bash
+xcode-select --print-path
+```
+
+If that command reports that the tools are missing, install them and complete
+the system dialog before continuing:
+
+```bash
+xcode-select --install
+```
+
+Install Rust with the Rust project's canonical rustup installer:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Accept rustup's default toolchain profile. Load Cargo into the current shell,
+verify the toolchain, ensure the canonical build components are installed, and
+build the package:
+
+```bash
+source "$HOME/.cargo/env"
+rustup --version
+rustc --version
+cargo --version
+rustup component add rustfmt clippy
 ./build.sh
 ```
 
@@ -66,6 +92,55 @@ tree -f /path/to/directory
 tree /path/to/directory --full-path
 tree -- -directory
 ```
+
+## dos2unix
+
+```text
+dos2unix v<package-version>
+Preview or convert CRLF line endings — https://github.com/queone/rkit
+Usage
+  dos2unix [options] [--] FILE
+
+  Preview FILE and display each CRLF pair as visible \r\n text.
+  Use -- before a FILE whose name begins with a dash.
+
+Options
+  -f, --force    Convert CRLF pairs to LF in place
+  -v, --version  Print version and exit
+  -h, -?, --help Show this help message and exit
+  --             End option parsing
+```
+
+Preview mode reads the complete regular file before printing it, replaces each
+CRLF pair with visible `\r\n` text, and leaves every other byte unchanged. The
+marker uses ANSI blue and help uses the same white command name as `tree` only
+when standard output is a compatible terminal. Set `NO_COLOR`, use
+`TERM=dumb`, or redirect output to receive plain bytes without ANSI escapes.
+
+Use `-f` or `--force` before or after the file operand to replace each CRLF
+pair with LF in place. Conversion preserves lone CR bytes, arbitrary non-UTF-8
+bytes, the existing file inode, hard-link visibility, symbolic-link operands,
+and Unix mode bits where supported. It accepts only regular files or symbolic
+links to regular files.
+
+Conversion reads the complete file before truncating and rewriting the same
+open file. Open, inspection, and initial-read failures leave the file
+unchanged. A write or flush failure after truncation can leave it partially
+written; restore it from a backup or source control before retrying.
+
+Examples:
+
+```bash
+dos2unix file.txt
+dos2unix -f file.txt
+dos2unix file.txt --force
+dos2unix -- -file.txt
+```
+
+The Rust port preserves the Go utility's CRLF preview and byte-conversion
+semantics. It intentionally uses the package-wide Cargo version, terminal-aware
+color, help flags, options on either side of the operand, and exit code 2 for
+invalid arguments.
 
 ## Governance
 
