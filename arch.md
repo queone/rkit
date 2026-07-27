@@ -25,8 +25,9 @@ standard error.
 - `src/dos2unix.rs`: CRLF parsing, preview, conversion, and diagnostics
 - `src/color.rs`: shared terminal color policy
 - `src/lib.rs`: narrow package-binary library boundary
-- `tests/cli.rs`: compiled-binary acceptance coverage
+- `tests/tree_cli.rs`: compiled `tree` behavior coverage
 - `tests/dos2unix_cli.rs`: compiled `dos2unix` behavior and file-effect coverage
+- `tests/build_cli.sh`: build routing and release-safety coverage
 - `build.sh`: isolated Cargo validation and package-binary installation
 
 ## Core Files
@@ -40,8 +41,9 @@ standard error.
 - `src/tree.rs`: reusable `tree` behavior
 - `src/dos2unix.rs`: reusable `dos2unix` behavior
 - `src/color.rs`: shared terminal color detection and rendering
-- `tests/cli.rs`: end-to-end `tree` tests
+- `tests/tree_cli.rs`: end-to-end `tree` tests
 - `tests/dos2unix_cli.rs`: end-to-end `dos2unix` tests
+- `tests/build_cli.sh`: Bash 3.2-compatible build and release routing tests
 - `governa/development-cycle.md`: workflow from roadmap through release
 - `governa/ac-template.md`: acceptance-criteria template for new work
 - `governa/build-release.md`: build, test, and release rules
@@ -81,6 +83,16 @@ standard error.
 - Lexically clean displayed joined paths without filesystem canonicalization.
 - Build in an external temporary Cargo target and install binaries under
   `${CARGO_HOME:-$HOME/.cargo}/bin`.
+- Discover utility targets from explicit Cargo `[[bin]]` tables whose paths
+  follow `src/bin/<utility>.rs`.
+- Map each utility to `tests/<utility>_cli.rs`.
+- Keep full builds and release validation package-wide.
+- Scope binary checks, integration tests, release artifacts, and installation
+  when space-separated utility names are supplied.
+- Keep shared-library tests and formatting package-wide during scoped builds.
+- Use tracked Cargo installation for full builds.
+- Use untracked forced Cargo installation for explicitly selected binaries so
+  unselected binaries and Cargo tracking metadata remain unchanged.
 
 ## Conventions
 

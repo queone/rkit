@@ -35,14 +35,21 @@ This repo uses a self-contained `build.sh` for all build, release-prep, and rele
 To scope the run to selected commands:
 
 ```bash
-./build.sh governa
+./build.sh tree
+./build.sh dos2unix
+./build.sh tree dos2unix
 ```
 
-`staticcheck` is pinned to `v0.7.0` and installed to `$(go env GOPATH)/bin/staticcheck` on first run. The installed path is used directly (not any `staticcheck` on `PATH`), so the version is deterministic across environments.
-
-## Sandboxed Execution
-
-Under sandboxed execution that blocks Go's build cache (look for `writing stat cache ... operation not permitted`), `staticcheck` may print a `matched no packages` warning even though it ran cleanly. Treat as advisory unless real findings appear; an unrestricted rerun confirms.
+- Separate utility names with spaces.
+- Keep formatting and shared-library tests package-wide during scoped builds.
+- Limit binary checks, integration tests, release artifacts, and installation to selected utilities.
+- Use scoped builds only for routine iteration.
+- Run `./build.sh` without targets for handoff and release validation.
+- Preserve package-wide pre-change and post-change builds during release prep.
+- Install full builds with tracked `cargo install --bins`.
+- Install scoped builds with `cargo install --no-track --force`.
+- Warn that a scoped install can overwrite a same-named selected binary.
+- Preserve installed unselected binaries and Cargo tracking metadata during scoped builds.
 
 ## Pre-Release Checklist
 

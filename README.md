@@ -48,6 +48,23 @@ temporary Cargo target outside the repository. After validation succeeds, it
 installs every package binary under `${CARGO_HOME:-$HOME/.cargo}/bin`. It
 leaves no repository-local `target/` directory.
 
+Pass space-separated utility names to validate, release-build, and install only
+those binaries:
+
+```bash
+./build.sh tree
+./build.sh dos2unix
+./build.sh tree dos2unix
+```
+
+A scoped build still formats the package and validates the shared library used
+by every utility. It limits binary checks, CLI integration tests, release
+artifacts, and installation to the selected names. Scoped installation uses
+Cargo's `--no-track --force` mode so installed but unselected `rkit` binaries
+remain untouched and Cargo's tracked package metadata remains unchanged. An
+explicitly selected utility can overwrite a same-named destination binary.
+Run `./build.sh` without targets for handoff and release validation.
+
 ## Tree
 
 ```text

@@ -253,18 +253,172 @@ _run_cargo() {
 
 build_usage() {
   cat <<'EOF'
-Usage: build [-v|--verbose]
+Usage: build [utility ...] [-v|--verbose]
 
   -v, --verbose   show verbose Cargo output
   -h, -?, --help  show this help
+
+Utility names are space-separated and may appear before or after --verbose.
+With no utility names, the build validates and installs the full package.
+Scoped installs use --no-track --force and may overwrite a same-named binary.
 EOF
 }
 
-_build_phases() {
+_bin_targets=()
+_target_error=''
+
+_load_bin_targets() {
+  _bin_targets=()
+  _target_error=''
+  local parsed rc=0 kind name path expected seen_names='' seen_paths=''
+  parsed=$(awk '
+    function fail(message) {
+      print "ERROR\t" message
+      failed=1
+    }
+    function flush_bin() {
+      if (!in_bin) return
+      if (name == "") fail("an explicit [[bin]] table is missing a literal name")
+      if (path == "") fail("an explicit [[bin]] table is missing a literal path")
+      if (name != "" && path != "") print "BIN\t" name "\t" path
+      name=""; path=""; in_bin=0
+    }
+    /^[[:space:]]*\[\[bin\]\][[:space:]]*($|#)/ {
+      flush_bin()
+      in_bin=1
+      next
+    }
+    /^[[:space:]]*\[/ {
+      flush_bin()
+      next
+    }
+    in_bin && /^[[:space:]]*name[[:space:]]*=/ {
+      if (name != "") {
+        fail("an explicit [[bin]] table declares name more than once")
+        next
+      }
+      value=$0
+      sub(/^[[:space:]]*name[[:space:]]*=[[:space:]]*"/, "", value)
+      if (value == $0 || value !~ /"[[:space:]]*(#.*)?$/) {
+        fail("an explicit [[bin]] name must be a single-line double-quoted literal")
+        next
+      }
+      sub(/"[[:space:]]*(#.*)?$/, "", value)
+      name=value
+      next
+    }
+    in_bin && /^[[:space:]]*path[[:space:]]*=/ {
+      if (path != "") {
+        fail("an explicit [[bin]] table declares path more than once")
+        next
+      }
+      value=$0
+      sub(/^[[:space:]]*path[[:space:]]*=[[:space:]]*"/, "", value)
+      if (value == $0 || value !~ /"[[:space:]]*(#.*)?$/) {
+        fail("an explicit [[bin]] path must be a single-line double-quoted literal")
+        next
+      }
+      sub(/"[[:space:]]*(#.*)?$/, "", value)
+      path=value
+      next
+    }
+    END {
+      flush_bin()
+      if (failed) exit 1
+    }
+  ' Cargo.toml) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    _target_error=$(printf '%s\n' "$parsed" | awk -F '\t' '$1=="ERROR"{print $2; exit}')
+    [ -n "$_target_error" ] || _target_error='could not parse explicit [[bin]] tables'
+    _failure "build: inspect Cargo binary targets: $_target_error; use literal name and path values and retry"
+    return 1
+  fi
+
+  while IFS="$(printf '\t')" read -r kind name path; do
+    [ "$kind" = BIN ] || continue
+    case "
+$seen_names
+" in
+    *"
+$name
+"*)
+      _failure "build: inspect Cargo binary targets: duplicate name $(_quote "$name"); use unique [[bin]] names and retry"
+      return 1
+      ;;
+    esac
+    case "
+$seen_paths
+" in
+    *"
+$path
+"*)
+      _failure "build: inspect Cargo binary targets: duplicate path $(_quote "$path"); use unique [[bin]] paths and retry"
+      return 1
+      ;;
+    esac
+    expected="src/bin/$name.rs"
+    if [ "$path" != "$expected" ]; then
+      _failure "build: inspect Cargo binary $(_quote "$name"): expected path $(_quote "$expected"), found $(_quote "$path"); align Cargo.toml and src/bin before retrying"
+      return 1
+    fi
+    if [ ! -f "$path" ]; then
+      _failure "build: inspect Cargo binary $(_quote "$name"): $(_quote "$path") is not a regular file; restore it and retry"
+      return 1
+    fi
+    if [ ! -f "tests/${name}_cli.rs" ]; then
+      _failure "build: inspect Cargo binary $(_quote "$name"): missing $(_quote "tests/${name}_cli.rs"); add its CLI integration test and retry"
+      return 1
+    fi
+    seen_names="${seen_names}${seen_names:+
+}$name"
+    seen_paths="${seen_paths}${seen_paths:+
+}$path"
+    _bin_targets+=("$name")
+  done <<EOF
+$parsed
+EOF
+
+  if [ "${#_bin_targets[@]}" -eq 0 ]; then
+    _failure 'build: inspect Cargo binary targets: no explicit [[bin]] targets; declare one and retry'
+    return 1
+  fi
+
+  local sorted
+  sorted=$(printf '%s\n' "${_bin_targets[@]}" | LC_ALL=C sort)
+  _bin_targets=()
+  while IFS= read -r name || [ -n "$name" ]; do
+    [ -n "$name" ] && _bin_targets+=("$name")
+  done <<EOF
+$sorted
+EOF
+}
+
+_available_target_text() {
+  printf '%s' "${_bin_targets[*]}"
+}
+
+_run_build_cli_tests() {
+  printf '\n%s\n' "$(yel7 '==> Test build command routing')"
+  printf '    %s\n' 'bash tests/build_cli.sh'
+  bash tests/build_cli.sh || return $?
+  if [ -x /bin/bash ] &&
+    /bin/bash --version 2>/dev/null | head -n 1 |
+      grep -Eq 'version 3\.2([.]|[[:space:]])'; then
+    printf '    %s\n' '/bin/bash tests/build_cli.sh (Bash 3.2)'
+    /bin/bash tests/build_cli.sh
+  else
+    printf '    %s\n' 'Bash 3.2 compatibility run: skipped (Bash 3.2 unavailable)'
+  fi
+}
+
+_build_all_phases() {
   local verbose="$1" install="$2" rc=0
+  _load_bin_targets || return 1
 
   printf '%s\n' "$(yel7 '==> Check Rust formatting')"
   _run_cargo 'cargo fmt --check' rustfmt cargo fmt --check || return $?
+
+  _run_build_cli_tests || return $?
 
   printf '\n%s\n' "$(yel7 '==> Run Clippy')"
   if [ "$verbose" -eq 1 ]; then
@@ -323,10 +477,95 @@ _build_phases() {
   fi
 }
 
+_build_scoped_phases() {
+  local verbose="$1"
+  shift
+  local targets=("$@") rc=0 target
+  local cargo_targets=() cargo_tests=()
+  _load_bin_targets || return 1
+  for target in "${targets[@]}"; do
+    cargo_targets+=(--bin "$target")
+    cargo_tests+=(--test "${target}_cli")
+  done
+
+  printf '%s\n' "$(yel7 '==> Check Rust formatting')"
+  _run_cargo 'cargo fmt --check' rustfmt cargo fmt --check || return $?
+
+  _run_build_cli_tests || return $?
+
+  printf '\n%s\n' "$(yel7 '==> Run scoped Clippy')"
+  if [ "$verbose" -eq 1 ]; then
+    _run_cargo 'cargo clippy' clippy \
+      cargo clippy --verbose --all-features --lib \
+      "${cargo_targets[@]}" "${cargo_tests[@]}" \
+      --target-dir "$_cargo_target" -- -D warnings || return $?
+  else
+    _run_cargo 'cargo clippy' clippy \
+      cargo clippy --all-features --lib \
+      "${cargo_targets[@]}" "${cargo_tests[@]}" \
+      --target-dir "$_cargo_target" -- -D warnings || return $?
+  fi
+
+  printf '\n%s\n' "$(yel7 '==> Run scoped tests')"
+  if [ "$verbose" -eq 1 ]; then
+    _run_cargo 'cargo test' '' \
+      cargo test --verbose --all-features --lib \
+      "${cargo_targets[@]}" "${cargo_tests[@]}" \
+      --target-dir "$_cargo_target" || return $?
+  else
+    _run_cargo 'cargo test' '' \
+      cargo test --all-features --lib \
+      "${cargo_targets[@]}" "${cargo_tests[@]}" \
+      --target-dir "$_cargo_target" || return $?
+  fi
+
+  printf '\n%s\n' "$(yel7 '==> Build selected release artifacts')"
+  if [ "$verbose" -eq 1 ]; then
+    _run_cargo 'cargo build --release' '' \
+      cargo build --verbose --release "${cargo_targets[@]}" \
+      --target-dir "$_cargo_target" || return $?
+  else
+    _run_cargo 'cargo build --release' '' \
+      cargo build --release "${cargo_targets[@]}" \
+      --target-dir "$_cargo_target" || return $?
+  fi
+
+  local install_root
+  install_root=$(_cargo_install_root) || return 1
+  printf '\n%s\n' "$(yel7 '==> Install selected package binaries')"
+  if [ "$verbose" -eq 1 ]; then
+    _run_cargo 'cargo install selected package binaries' '' \
+      cargo install --verbose --path . --no-track --force \
+      "${cargo_targets[@]}" --all-features --locked \
+      --root "$install_root" --target-dir "$_cargo_target" || {
+      rc=$?
+      _failure \
+        'build: install selected package binaries: resolve destination access before retrying'
+      return "$rc"
+    }
+  else
+    _run_cargo 'cargo install selected package binaries' '' \
+      cargo install --path . --no-track --force \
+      "${cargo_targets[@]}" --all-features --locked \
+      --root "$install_root" --target-dir "$_cargo_target" || {
+      rc=$?
+      _failure \
+        'build: install selected package binaries: resolve destination access before retrying'
+      return "$rc"
+    }
+  fi
+}
+
 build_run() {
   local verbose="$1"
+  shift
+  local targets=("$@")
   _require_cargo || return 1
-  _run_isolated _build_phases "$verbose" 1
+  if [ "${#targets[@]}" -eq 0 ]; then
+    _run_isolated _build_all_phases "$verbose" 1
+  else
+    _run_isolated _build_scoped_phases "$verbose" "${targets[@]}"
+  fi
 }
 
 _refresh_cargo_lock() {
@@ -338,7 +577,8 @@ build_main() {
   if [ "$#" -eq 1 ]; then
     case "$1" in -h | -\? | --help) build_usage; return 0 ;; esac
   fi
-  local verbose=0 arg
+  local verbose=0 arg target found sorted
+  local requested=() normalized=()
   for arg in "$@"; do
     case "$arg" in
     -v | --verbose) verbose=1 ;;
@@ -350,13 +590,30 @@ build_main() {
       _failure "$(printf 'unsupported option %s; use optional -v or --verbose' "$(_quote "$arg")")"
       return 2
       ;;
-    *)
-      _failure "$(printf 'unexpected argument %s; Rust builds do not accept targets' "$(_quote "$arg")")"
-      return 2
-      ;;
+    *) requested+=("$arg") ;;
     esac
   done
-  build_run "$verbose"
+  _load_bin_targets || return 1
+  for target in "${requested[@]}"; do
+    found=0
+    for arg in "${_bin_targets[@]}"; do
+      if [ "$target" = "$arg" ]; then found=1; break; fi
+    done
+    if [ "$found" -ne 1 ]; then
+      _failure "build: parse utility $(_quote "$target"): unknown utility; available utilities: $(_available_target_text)"
+      return 2
+    fi
+  done
+  if [ "${#requested[@]}" -gt 0 ]; then
+    sorted=$(printf '%s\n' "${requested[@]}" | LC_ALL=C sort -u)
+    while IFS= read -r target || [ -n "$target" ]; do
+      [ -n "$target" ] && normalized+=("$target")
+    done <<EOF
+$sorted
+EOF
+    printf '%s %s\n' "$(yel7 'selected utilities:')" "$(grn3 "${normalized[*]}")"
+  fi
+  build_run "$verbose" "${normalized[@]}"
 }
 
 _latest_tag() {
@@ -559,7 +816,7 @@ EOF
   if [ "$nobuild" -ne 1 ]; then
     printf '%s\n' "$(yel7 'prep: running pre-change build')"
     _require_cargo || return 1
-    _run_isolated _build_phases 0 0 || return 1
+    _run_isolated _build_all_phases 0 0 || return 1
   fi
 
   _replace_cargo_version Cargo.toml "$stripped" || return 1

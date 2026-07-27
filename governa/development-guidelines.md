@@ -67,9 +67,17 @@ Sections above ## Project Practices are governa-maintained canon and update via 
 ## Rust Practices
 
 - Run all repository validation through `./build.sh`.
+- Pass space-separated utility names only for routine scoped validation.
+- Run `./build.sh` without targets before handoff and during release validation.
 - Declare at least one Cargo binary target.
+- Map each explicit Cargo binary to `src/bin/<utility>.rs`.
+- Map each Cargo binary to `tests/<utility>_cli.rs`.
+- Disable color in build-command tests that assert literal output.
 - Keep Cargo compilation artifacts in the build-managed temporary target.
-- Install all Cargo binary targets through the canonical build.
+- Install all Cargo binary targets with tracked Cargo metadata during full builds.
+- Install selected Cargo binaries with `--no-track --force` during scoped builds.
+- Preserve unselected binaries and Cargo tracking metadata during scoped builds.
+- Warn that scoped installation can overwrite a same-named selected binary.
 - Install binaries only during successful post-change release validation.
 - Skip binary installation during pre-change validation and `--no-build` release prep.
 - Set `CARGO_HOME` to an external path when isolating binary installation.
