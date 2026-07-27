@@ -1,0 +1,27 @@
+# Build artifacts
+*.out
+*.test
+*.exe
+
+# Root command binaries (Go compiler emits these to repo root when `go build ./cmd/<name>` is run without -o).
+/build
+/prep
+/rel
+
+# Coverage
+build-cover-*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Rust
+/target/
+**/*.rs.bk
