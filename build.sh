@@ -16,10 +16,65 @@ _quote() {
   printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
 }
 
+# ── color ────────────────────────────────────────────────────────────────────
+# Mirrors governa-color: a sequence is emitted only when color is both enabled
+# (NO_COLOR unset, TERM != dumb, stdout a TTY) and 256-color capable (COLORTERM
+# truecolor/24bit, or TERM containing 256color). Computed once. The TTY signal
+# is injectable via GOVERNA_FORCE_TTY (1/0) for tests, since no PTY is used.
+_color_init() {
+  _color_on=1
+  [ -n "${NO_COLOR:-}" ] && _color_on=0
+  [ "${TERM:-}" = "dumb" ] && _color_on=0
+  if [ -n "${GOVERNA_FORCE_TTY:-}" ]; then
+    [ "${GOVERNA_FORCE_TTY}" = "1" ] || _color_on=0
+  elif [ ! -t 1 ]; then
+    _color_on=0
+  fi
+  _color256=0
+  case "${COLORTERM:-}" in truecolor | 24bit) _color256=1 ;; esac
+  case "${TERM:-}" in *256color*) _color256=1 ;; esac
+  return 0
+}
+
+_wrap() { # $1=sgr-code $2=text
+  if [ "$_color_on" = 1 ] && [ "$_color256" = 1 ]; then
+    printf '\033[%sm%s\033[0m' "$1" "$2"
+  else
+    printf '%s' "$2"
+  fi
+}
+
+yel7() { _wrap '38;5;227' "$1"; }
+yel5() { _wrap '38;5;220' "$1"; }
+grn3() { _wrap '38;5;34' "$1"; }
+grn5() { _wrap '38;5;46' "$1"; }
+gra5() { _wrap '38;5;245' "$1"; }
+cya4() { _wrap '38;5;44' "$1"; }
+red3() { _wrap '38;5;124' "$1"; }
+whi5() { _wrap '38;5;231' "$1"; }
+
+# bold rewrites every inner reset so the attribute survives nested color, then
+# wraps — matching governa-color Bold. Quoted pattern => literal match (no glob).
+bold() {
+  if [ "$_color_on" = 1 ] && [ "$_color256" = 1 ]; then
+    local reset bold1
+    reset=$(printf '\033[0m')
+    bold1=$(printf '\033[1m')
+    local s=${1//"$reset"/"$reset$bold1"}
+    printf '\033[1m%s\033[0m' "$s"
+  else
+    printf '%s' "$1"
+  fi
+}
+
+_failure() {
+  printf '%s\n' "$(red3 "$1")" >&2
+}
+
 _require_cargo() {
   if ! command -v cargo >/dev/null 2>&1; then
-    printf '%s\n' \
-      'build: cargo is required; install the Rust toolchain from https://rustup.rs/ and retry' >&2
+    _failure \
+      'build: cargo is required; install the Rust toolchain from https://rustup.rs/ and retry'
     return 1
   fi
 }
@@ -54,8 +109,8 @@ _cargo_signal() {
   local status="$1"
   trap - HUP INT TERM
   if ! _cleanup_cargo_target; then
-    printf '%s\n' \
-      "build: cleanup failed for Cargo target ${_cargo_target:-unknown}; remove it manually" >&2
+    _failure \
+      "build: cleanup failed for Cargo target ${_cargo_target:-unknown}; remove it manually"
   fi
   exit "$status"
 }
@@ -63,7 +118,7 @@ _cargo_signal() {
 _create_cargo_target() {
   local parent candidate resolved home=''
   _repo_root=$(pwd -P) || {
-    printf '%s\n' 'build: resolve repository root: failed; check directory access' >&2
+    _failure 'build: resolve repository root: failed; check directory access'
     return 1
   }
   parent="${TMPDIR:-/tmp}"
@@ -74,36 +129,36 @@ _create_cargo_target() {
     if ! resolved=$(cd "$parent" 2>/dev/null && pwd -P) ||
        [ ! -w "$resolved" ] ||
        _path_is_within "$resolved" "$_repo_root"; then
-      printf '%s\n' \
-        'build: create Cargo target: no safe temporary directory; set TMPDIR to a writable path outside the repository' >&2
+      _failure \
+        'build: create Cargo target: no safe temporary directory; set TMPDIR to a writable path outside the repository'
       return 1
     fi
   fi
   candidate=$(mktemp -d "$resolved/governa-rust-target.XXXXXX") || {
-    printf '%s\n' \
-      'build: create Cargo target: mktemp failed; set TMPDIR to a writable path outside the repository' >&2
+    _failure \
+      'build: create Cargo target: mktemp failed; set TMPDIR to a writable path outside the repository'
     return 1
   }
   candidate=$(cd "$candidate" 2>/dev/null && pwd -P) || {
     rmdir "$candidate" 2>/dev/null || true
-    printf '%s\n' 'build: resolve Cargo target: failed; remove the temporary directory manually' >&2
+    _failure 'build: resolve Cargo target: failed; remove the temporary directory manually'
     return 1
   }
   [ -n "${HOME:-}" ] && home=$(cd "$HOME" 2>/dev/null && pwd -P || true)
   case "$candidate" in
   / | "$home")
-    printf '%s\n' 'build: unsafe Cargo target path; refusing cleanup' >&2
+    _failure 'build: unsafe Cargo target path; refusing cleanup'
     return 1
     ;;
   esac
   if _path_is_within "$candidate" "$_repo_root"; then
-    printf '%s\n' 'build: Cargo target resolved inside the repository; set a safe TMPDIR' >&2
+    _failure 'build: Cargo target resolved inside the repository; set a safe TMPDIR'
     return 1
   fi
   case "$(basename "$candidate")" in
   governa-rust-target.*) ;;
   *)
-    printf '%s\n' 'build: Cargo target has an unsafe name; refusing cleanup' >&2
+    _failure 'build: Cargo target has an unsafe name; refusing cleanup'
     return 1
     ;;
   esac
@@ -122,8 +177,8 @@ _run_isolated() {
   _cleanup_cargo_target || cleanup_rc=$?
   if [ "$rc" -ne 0 ]; then return "$rc"; fi
   if [ "$cleanup_rc" -ne 0 ]; then
-    printf '%s\n' \
-      "build: cleanup failed for Cargo target ${_cargo_target:-unknown}; remove it manually" >&2
+    _failure \
+      "build: cleanup failed for Cargo target ${_cargo_target:-unknown}; remove it manually"
     return "$cleanup_rc"
   fi
 }
@@ -135,8 +190,8 @@ _cargo_install_root() {
   elif [ -n "${HOME:-}" ]; then
     root="$HOME/.cargo"
   else
-    printf '%s\n' \
-      'build: resolve Cargo install root: set CARGO_HOME or HOME to an external writable directory' >&2
+    _failure \
+      'build: resolve Cargo install root: set CARGO_HOME or HOME to an external writable directory'
     return 1
   fi
   case "$root" in
@@ -144,30 +199,30 @@ _cargo_install_root() {
   *) root="$_repo_root/$root" ;;
   esac
   if _path_is_within "$root" "$_repo_root"; then
-    printf '%s\n' \
-      'build: Cargo install root resolves inside the repository; set CARGO_HOME outside the repository' >&2
+    _failure \
+      'build: Cargo install root resolves inside the repository; set CARGO_HOME outside the repository'
     return 1
   fi
   parent=$(dirname "$root")
   leaf=$(basename "$root")
   mkdir -p "$parent" || {
-    printf '%s\n' 'build: create Cargo install parent: failed; check CARGO_HOME or HOME permissions' >&2
+    _failure 'build: create Cargo install parent: failed; check CARGO_HOME or HOME permissions'
     return 1
   }
   resolved=$(cd "$parent" 2>/dev/null && pwd -P) || {
-    printf '%s\n' 'build: resolve Cargo install root: failed; check CARGO_HOME or HOME' >&2
+    _failure 'build: resolve Cargo install root: failed; check CARGO_HOME or HOME'
     return 1
   }
   root="$resolved/$leaf"
   if [ -e "$root" ]; then
     root=$(cd "$root" 2>/dev/null && pwd -P) || {
-      printf '%s\n' 'build: resolve Cargo install root: failed; check CARGO_HOME or HOME' >&2
+      _failure 'build: resolve Cargo install root: failed; check CARGO_HOME or HOME'
       return 1
     }
   fi
   if _path_is_within "$root" "$_repo_root"; then
-    printf '%s\n' \
-      'build: Cargo install root resolves inside the repository; set CARGO_HOME outside the repository' >&2
+    _failure \
+      'build: Cargo install root resolves inside the repository; set CARGO_HOME outside the repository'
     return 1
   fi
   printf '%s' "$root"
@@ -176,21 +231,21 @@ _cargo_install_root() {
 _run_cargo() {
   local step="$1" component="$2"
   shift 2
-  printf '    %s\n' "$*"
+  printf '    %s\n' "$(grn3 "$*")"
   local rc=0
   "$@" || rc=$?
   if [ "$rc" -eq 0 ]; then return 0; fi
   case "$component" in
   rustfmt)
-    printf '%s\n' \
-      "$step failed; if rustfmt is unavailable, run: rustup component add rustfmt" >&2
+    _failure \
+      "$step failed; if rustfmt is unavailable, run: rustup component add rustfmt"
     ;;
   clippy)
-    printf '%s\n' \
-      "$step failed; if Clippy is unavailable, run: rustup component add clippy" >&2
+    _failure \
+      "$step failed; if Clippy is unavailable, run: rustup component add clippy"
     ;;
   *)
-    printf '%s failed: exit status %d\n' "$step" "$rc" >&2
+    _failure "$(printf '%s failed: exit status %d' "$step" "$rc")"
     ;;
   esac
   return "$rc"
@@ -208,10 +263,10 @@ EOF
 _build_phases() {
   local verbose="$1" install="$2" rc=0
 
-  printf '%s\n' '==> Check Rust formatting'
+  printf '%s\n' "$(yel7 '==> Check Rust formatting')"
   _run_cargo 'cargo fmt --check' rustfmt cargo fmt --check || return $?
 
-  printf '\n%s\n' '==> Run Clippy'
+  printf '\n%s\n' "$(yel7 '==> Run Clippy')"
   if [ "$verbose" -eq 1 ]; then
     _run_cargo 'cargo clippy' clippy \
       cargo clippy --verbose --all-targets --all-features \
@@ -223,7 +278,7 @@ _build_phases() {
       --target-dir "$_cargo_target" -- -D warnings || return $?
   fi
 
-  printf '\n%s\n' '==> Run tests'
+  printf '\n%s\n' "$(yel7 '==> Run tests')"
   if [ "$verbose" -eq 1 ]; then
     _run_cargo 'cargo test' '' \
       cargo test --verbose --all-targets --all-features \
@@ -234,7 +289,7 @@ _build_phases() {
       --target-dir "$_cargo_target" || return $?
   fi
 
-  printf '\n%s\n' '==> Build release artifacts'
+  printf '\n%s\n' "$(yel7 '==> Build release artifacts')"
   if [ "$verbose" -eq 1 ]; then
     _run_cargo 'cargo build --release' '' \
       cargo build --verbose --release --target-dir "$_cargo_target" || return $?
@@ -246,14 +301,14 @@ _build_phases() {
   [ "$install" -eq 1 ] || return 0
   local install_root
   install_root=$(_cargo_install_root) || return 1
-  printf '\n%s\n' '==> Install package binaries'
+  printf '\n%s\n' "$(yel7 '==> Install package binaries')"
   if [ "$verbose" -eq 1 ]; then
     _run_cargo 'cargo install package binaries' '' \
       cargo install --verbose --path . --bins --all-features --locked \
       --root "$install_root" --target-dir "$_cargo_target" || {
         rc=$?
-        printf '%s\n' \
-          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying' >&2
+        _failure \
+          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying'
         return "$rc"
       }
   else
@@ -261,8 +316,8 @@ _build_phases() {
       cargo install --path . --bins --all-features --locked \
       --root "$install_root" --target-dir "$_cargo_target" || {
         rc=$?
-        printf '%s\n' \
-          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying' >&2
+        _failure \
+          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying'
         return "$rc"
       }
   fi
@@ -288,15 +343,15 @@ build_main() {
     case "$arg" in
     -v | --verbose) verbose=1 ;;
     -h | -\? | --help)
-      printf '%s\n' 'help flags must be used by themselves' >&2
+      _failure 'help flags must be used by themselves'
       return 2
       ;;
     -*)
-      printf 'unsupported option %s; use optional -v or --verbose\n' "$(_quote "$arg")" >&2
+      _failure "$(printf 'unsupported option %s; use optional -v or --verbose' "$(_quote "$arg")")"
       return 2
       ;;
     *)
-      printf 'unexpected argument %s; Rust builds do not accept targets\n' "$(_quote "$arg")" >&2
+      _failure "$(printf 'unexpected argument %s; Rust builds do not accept targets' "$(_quote "$arg")")"
       return 2
       ;;
     esac
@@ -319,16 +374,16 @@ _latest_tag() {
 _validate_release_inputs() {
   local prefix="$1" version="$2" message="$3"
   if ! printf '%s' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-    printf '%s: version must match vMAJOR.MINOR.PATCH: %s\n' \
-      "$prefix" "$(_quote "$version")" >&2
+    _failure "$(printf '%s: version must match vMAJOR.MINOR.PATCH: %s' \
+      "$prefix" "$(_quote "$version")")"
     return 1
   fi
   if [ -z "$message" ]; then
-    printf '%s: message must be non-empty\n' "$prefix" >&2
+    _failure "$(printf '%s: message must be non-empty' "$prefix")"
     return 1
   fi
   if [ "$(_byte_len "$message")" -gt 80 ]; then
-    printf '%s: message must be 80 characters or fewer\n' "$prefix" >&2
+    _failure "$(printf '%s: message must be 80 characters or fewer' "$prefix")"
     return 1
   fi
 }
@@ -336,11 +391,11 @@ _validate_release_inputs() {
 _validate_git_state() {
   local prefix="$1" version="$2"
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    printf '%s: run from the root of a git work tree\n' "$prefix" >&2
+    _failure "$(printf '%s: run from the root of a git work tree' "$prefix")"
     return 1
   fi
   if git rev-parse -q --verify "refs/tags/$version" >/dev/null 2>&1; then
-    printf '%s: tag %s already exists\n' "$prefix" "$version" >&2
+    _failure "$(printf '%s: tag %s already exists' "$prefix" "$version")"
     return 1
   fi
 }
@@ -398,7 +453,7 @@ _replace_cargo_version() {
     { print }
     END { if (!changed) exit 1 }' "$manifest" >"$tmp" || {
       rm -f "$tmp"
-      printf '%s\n' 'prep: update Cargo.toml version: failed' >&2
+      _failure 'prep: update Cargo.toml version: failed'
       return 1
     }
   cat "$tmp" >"$manifest"
@@ -410,11 +465,11 @@ _insert_changelog_row() {
   [ -f "$file" ] || return 0
   if ! rg -q '^\| Unreleased \|' "$file" 2>/dev/null &&
      ! grep -Eq '^\| Unreleased \|' "$file"; then
-    printf 'prep: %s has no Unreleased row\n' "$file" >&2
+    _failure "$(printf 'prep: %s has no Unreleased row' "$file")"
     return 1
   fi
   if grep -Fq "| $version |" "$file"; then
-    printf 'prep: %s already contains version %s\n' "$file" "$version" >&2
+    _failure "$(printf 'prep: %s already contains version %s' "$file" "$version")"
     return 1
   fi
   tmp=$(mktemp "${TMPDIR:-/tmp}/changelog.XXXXXX")
@@ -451,7 +506,7 @@ _remove_plan_pointers() {
     number=$(printf '%s' "$line" |
       sed -nE 's/.*→[[:space:]]+governa\/ac([0-9]+)-.*/\1/p')
     if [ -n "$number" ] && printf '%s\n' "$refs" | grep -qx "$number"; then
-      printf 'prep: removed plan.md IE line: %s\n' "$(_trim "$line")"
+      printf '%s %s\n' "$(yel7 'prep: removed plan.md IE line:')" "$(_trim "$line")"
       continue
     fi
     printf '%s\n' "$line" >>"$tmp"
@@ -479,39 +534,41 @@ prep_run() {
   _validate_release_inputs prep "$version" "$message" || return 1
   _validate_git_state prep "$version" || return 1
   current=$(_cargo_version_info Cargo.toml) || {
-    printf 'prep: %s\n' "$current" >&2
+    _failure "$(printf 'prep: %s' "$current")"
     return 1
   }
   refs=$(_ac_refs "$message")
   acfiles=$(_matching_ac_files "$refs")
 
   if [ "$dry" -eq 1 ]; then
-    printf 'version bumps:\n  Cargo.toml [package].version: %s -> %s\n' \
-      "$current" "$stripped"
-    [ -f Cargo.lock ] && printf '%s\n' '  Cargo.lock: refresh with cargo check'
-    [ -f CHANGELOG.md ] && printf 'changelog rows:\n  CHANGELOG.md: %s\n' "$stripped"
+    printf '%s\n' "$(yel7 'version bumps:')"
+    printf '  Cargo.toml [package].version: %s -> %s\n' \
+      "$current" "$(grn3 "$stripped")"
+    [ -f Cargo.lock ] && printf '  %s\n' "$(yel7 'Cargo.lock: refresh with cargo check')"
+    [ -f CHANGELOG.md ] && printf '%s\n  CHANGELOG.md: %s\n' \
+      "$(yel7 'changelog rows:')" "$(grn3 "$stripped")"
     while IFS= read -r file; do
-      [ -n "$file" ] && printf 'delete completed AC: %s\n' "$file"
+      [ -n "$file" ] && printf '%s %s\n' "$(yel7 'delete completed AC:')" "$file"
     done <<EOF
 $acfiles
 EOF
-    printf './build.sh %s %s\n' "$version" "$(_quote "$message")"
+    printf '%s\n' "$(grn3 "$(printf './build.sh %s %s' "$version" "$(_quote "$message")")")"
     return 0
   fi
 
   if [ "$nobuild" -ne 1 ]; then
-    printf '%s\n' 'prep: running pre-change build'
+    printf '%s\n' "$(yel7 'prep: running pre-change build')"
     _require_cargo || return 1
     _run_isolated _build_phases 0 0 || return 1
   fi
 
   _replace_cargo_version Cargo.toml "$stripped" || return 1
-  printf 'prep: updated Cargo.toml [package].version to %s\n' "$stripped"
+  printf '%s %s\n' "$(yel7 'prep: updated Cargo.toml [package].version to')" "$(grn3 "$stripped")"
 
   _require_cargo || return 1
-  printf '%s\n' 'prep: refreshing Cargo.lock'
+  printf '%s\n' "$(yel7 'prep: refreshing Cargo.lock')"
   _run_isolated _refresh_cargo_lock || {
-    printf '%s\n' 'prep: refresh Cargo.lock with cargo check: failed' >&2
+    _failure 'prep: refresh Cargo.lock with cargo check: failed'
     return 1
   }
 
@@ -519,17 +576,17 @@ EOF
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     rm -- "$file"
-    printf 'prep: deleted %s\n' "$file"
+    printf '%s %s\n' "$(yel7 'prep: deleted')" "$file"
   done <<EOF
 $acfiles
 EOF
   _remove_plan_pointers "$refs"
 
   if [ "$nobuild" -ne 1 ]; then
-    printf '%s\n' 'prep: running post-change build'
+    printf '%s\n' "$(yel7 'prep: running post-change build')"
     ./build.sh || return 1
   fi
-  printf './build.sh %s %s\n' "$version" "$(_quote "$message")"
+  printf '%s\n' "$(grn3 "$(printf './build.sh %s %s' "$version" "$(_quote "$message")")")"
 }
 
 prep_main() {
@@ -543,15 +600,15 @@ prep_main() {
     --dry-run | -n) dry=1 ;;
     --no-build | -B) nobuild=1 ;;
     -h | -\? | --help)
-      printf '%s\n' 'help flags must be used by themselves' >&2
+      _failure 'help flags must be used by themselves'
       return 2
       ;;
-    -*) printf 'unsupported prep option %s\n' "$(_quote "$arg")" >&2; return 2 ;;
+    -*) _failure "$(printf 'unsupported prep option %s' "$(_quote "$arg")")"; return 2 ;;
     *) positional+=("$arg") ;;
     esac
   done
   if [ "${#positional[@]}" -ne 2 ]; then
-    printf '%s\n' 'usage: prep vX.Y.Z "release message"' >&2
+    _failure 'usage: prep vX.Y.Z "release message"'
     return 2
   fi
   prep_run "$dry" "$nobuild" "$(_trim "${positional[0]}")" \
@@ -576,10 +633,10 @@ _release_step() {
     [ -n "$out" ] && printf '%s\n' "$out"
     return 0
   fi
-  printf 'release: %s failed after [%s]: exit status %d: %s\n' \
-    "$name" "$completed" "$rc" "$(_trim "$out")" >&2
-  printf '%s\n' \
-    'release: inspect git status and remote state before retrying any step' >&2
+  _failure "$(printf 'release: %s failed after [%s]: exit status %d: %s' \
+    "$name" "$completed" "$rc" "$(_trim "$out")")"
+  _failure \
+    'release: inspect git status and remote state before retrying any step'
   return 1
 }
 
@@ -587,22 +644,22 @@ rel_run() {
   local version="$1" message="$2" answer completed=''
   _validate_release_inputs release "$version" "$message" || return 1
   _validate_git_state release "$version" || return 1
-  printf 'release tag: %s\n' "$version"
-  printf 'release message: %s\n' "$(_quote "$message")"
-  printf '%s\n' 'remote: origin'
-  printf '%s\n' 'Files that will be staged (git status):'
+  printf '%s %s\n' "$(yel7 'release tag:')" "$(grn3 "$version")"
+  printf '%s %s\n' "$(yel7 'release message:')" "$(grn3 "$(_quote "$message")")"
+  printf '%s %s\n' "$(yel7 'remote:')" "$(cya4 'origin')"
+  printf '%s\n' "$(yel7 'Files that will be staged (git status):')"
   git status --short || return 1
-  printf '%s\n' 'plan:'
+  printf '%s\n' "$(yel7 'plan:')"
   printf '%s\n' '- git add .'
   printf -- '- git commit -m %s\n' "$(_quote "$message")"
   printf '%s\n' "- git tag $version"
   printf '%s\n' "- git push origin $version"
   printf '%s\n' '- git push origin'
-  printf '%s' 'Review the file list above. Proceed with release? (y/N): '
+  printf '%s' "$(yel7 'Review the file list above. Proceed with release? (y/N): ')"
   IFS= read -r answer || true
   case "$answer" in
   y | Y) ;;
-  *) printf '%s\n' 'release aborted' >&2; return 1 ;;
+  *) _failure 'release aborted'; return 1 ;;
   esac
   _release_step 'git add' "$completed" add . || return 1
   completed='git add'
@@ -621,13 +678,15 @@ rel_main() {
     case "$1" in -h | -\? | --help) rel_usage; return 0 ;; esac
   fi
   if [ "$#" -ne 2 ]; then
-    printf '%s\n' 'usage: rel vX.Y.Z "release message"' >&2
+    _failure 'usage: rel vX.Y.Z "release message"'
     return 2
   fi
   rel_run "$(_trim "$1")" "$(_trim "$2")"
 }
 
 main() {
+  _color_init
+
   if [ "${1:-}" = prep ]; then
     shift
     prep_main "$@"

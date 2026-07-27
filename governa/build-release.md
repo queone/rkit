@@ -8,6 +8,17 @@
 
 This repo uses a self-contained `build.sh` for all build, release-prep, and release work. No external governa tools are required; everything runs directly from `build.sh`.
 
+### Build Presentation
+
+- Reuse the canonical build color policy and palette across supported CODE stacks.
+- Color phase headings, command previews, status values, failures, prep output, and release output by semantic role.
+- Emit plain output when stdout is not a terminal.
+- Emit plain output when `NO_COLOR` is set.
+- Emit plain output when `TERM=dumb`.
+- Require a 256-color-capable terminal before emitting ANSI sequences.
+- Preserve plain-text content and output streams when color is disabled.
+- Keep self-contained build scripts compatible with Bash 3.2.
+
 ## Minimum Validation
 
 - formatting passes

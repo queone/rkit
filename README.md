@@ -25,7 +25,7 @@ leaves no repository-local `target/` directory.
 ## Tree
 
 ```text
-tree v1.0.3
+tree v<package-version>
 Directory tree printer — https://github.com/queone/rkit
 Usage
   tree [options] [directory]

@@ -48,7 +48,7 @@ fn help_reports_usage_on_stdout() {
     assert!(output.status.success());
     assert!(stderr(&output).is_empty());
     let text = stdout(&output);
-    assert!(text.starts_with("tree v1.0.3\n"));
+    assert!(text.starts_with(&format!("tree v{}\n", env!("CARGO_PKG_VERSION"))));
     assert!(text.contains("https://github.com/queone/rkit"));
     assert!(text.contains("-f, --full-path"));
     assert!(text.contains("--               End option parsing"));
@@ -58,7 +58,10 @@ fn help_reports_usage_on_stdout() {
 fn version_reports_cargo_version_on_stdout() {
     let output = run(["root", "--version", "--bad"]);
     assert!(output.status.success());
-    assert_eq!(stdout(&output), "tree v1.0.3\n");
+    assert_eq!(
+        stdout(&output),
+        format!("tree v{}\n", env!("CARGO_PKG_VERSION"))
+    );
     assert!(stderr(&output).is_empty());
 }
 
