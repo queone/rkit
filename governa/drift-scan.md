@@ -13,15 +13,41 @@ The tool is consumer-run. Install the binary (`go install github.com/queone/gove
 - Before any canon→cwd walk, the tool runs the `## Canon-coherence precondition` check. If canon is internally incoherent on a registered cross-file rule, the tool refuses to emit and reports the incoherence on stdout. No file writes occur.
 - One repo per invocation. The tool makes no commits in the cwd and does not modify `plan.md`. Writes under `<cwd>/governa/` are limited to the AC stub.
 
-## Stack selection
+## Flavor and stack selection
 
-Use `-s, --stack <name>` to select CODE canon when the consumer has no language manifest yet:
+Adopted repositories carry the authoritative flavor in
+`governa/repo-type.txt`, containing exactly `CODE` or `DOC` followed by a
+newline. Drift-scan reads this marker before any repo-shape inference. The
+resolved report header identifies the flavor source as `marker`, `explicit`,
+or `fallback`.
+
+An explicit `--flavor code|doc` selector overrides the marker intentionally.
+An invalid marker is an error even when an explicit selector is supplied, so a
+corrupt marker cannot remain hidden.
+
+When the marker is absent and no explicit selector is supplied, fallback
+resolution uses these exact signals:
+
+- `go.mod`, `Cargo.toml`, `Package.swift`, `.terraform.lock.hcl`, or a root
+  `*.tf` file selects CODE.
+- `_config.yml` alone selects DOC.
+- `_config.yml` together with a strong CODE signal is a conflict and fails
+  with recovery guidance.
+- No recognized signal fails closed and asks for `--flavor` or the marker.
+
+Use `-s, --stack <name>` to select CODE canon when the consumer has no stack
+manifest yet:
 
 ```bash
 governa drift-scan --flavor code --stack Rust
 ```
 
-Explicit selectors override their corresponding inference independently: `--flavor` overrides flavor inference, and `--stack` overrides manifest-based stack inference. `--stack` does not imply CODE; when flavor inference resolves to DOC, remove `--stack` or add `--flavor code`. Passing `--stack` with explicit DOC flavor is invalid. When CODE flavor is selected without a recognized manifest, pass `-s, --stack <name>`.
+Explicit `--stack` overrides stack-manifest inference and applies only to CODE.
+It does not imply CODE; when flavor resolves to DOC, remove `--stack` or add `--flavor code`. When CODE flavor is selected without a recognized stack
+manifest, pass `-s, --stack <name>`.
+
+New `governa apply` output includes the marker. Without the marker, use fallback resolution; drift-scan surfaces the missing marker as the normal
+`missing-in-target` AC item and never writes it directly.
 
 Stack names remain free-form. First-class names such as `Go`, `Rust`, `Terraform`, and `Swift` select their stack overlays; another non-empty name selects generic CODE canon.
 
@@ -68,7 +94,7 @@ This protects in-progress consumer Operator critique edits from accidental clobb
 
 ## Divergence classification
 
-The tool emits one of the classifications below for every file. The Operator can override by editing the emitted AC stub before commit, routing the file in `## In Scope` / `## Out Of Scope` accordingly.
+The tool emits one of the classifications below for every file. The Operator can override a route by editing the emitted AC stub before commit and routing the file in `## In Scope` / `## Out Of Scope` accordingly. When an `ambiguity` item is present, the emitted Summary carries this exact sentence: `Routing resolution: a Director-resolved \`sync\` for an \`ambiguity\` item authorizes editing the named target even when it is absent from \`## In Scope\`; leave this emitted stub unchanged through sync and post-sync verification.`
 
 - **`match`** — canon and target byte-equal (or canon-zone-equal for mixed-content paths; see `## Mixed-content classification`). Not listed in the AC stub by default.
 - **`expected-divergence`** — canon is a per-repo stub by design and the file's path is in the `ExpectedDivergencePaths` registry (see `## Expected-divergence registry`); the tool skips the byte-compare and lists the file under `## Out Of Scope`. Treated as no-action.
@@ -197,6 +223,7 @@ The consumer-repo Operator handles drift-scan as a self-contained loop. The Dire
 - **Post-emission review.** Immediately after the AC stub is emitted, the Operator performs a high-level review of the stub and reports a concise summary to the Director — without waiting for a separate "review the drift-scan report" request.
 - **Summary content.** The summary names: main drift categories (counts of `clear-sync`, `ambiguity`, `preserve`, `expected-divergence`, etc.); routing decisions surfaced by the emission; obvious canon-owned issues that warrant upstream feedback rather than local sync; whether the emitted AC stub appears ready for critique and iteration.
 - **Scope discipline.** The summary is high-level; the emitted AC stub remains the source of truth. The Operator's role is to surface the report at a glance, not to recapitulate it.
+- **Effective scope.** Treat the named target as effective implementation scope when the Director resolves an `ambiguity` item as `sync`, even when it is absent from `## In Scope`.
 - **Not a governa-source handoff.** This is consumer-repo Operator behavior after a local scan. It does not require any action on the governa source side.
 - **Lifecycle symmetry.** When the Director wants to extricate Governa rather than refresh canon, run `governa rm` from the consumer repo root; it emits a cleanup AC stub plus a targeted sister diffs file for hybrid-file removal decisions.
-- **Sync-resolution stub discipline.** Sync routing-decision resolutions land in the target file, mirroring how preserve resolutions land in CHANGELOG markers (see `## Preserve-marker phrase set`). The emitted AC stub stays as-emitted from emission through release-prep deletion; the implementation IS the resolution. This keeps the edit-detection guard (see `## Re-run behavior and edit-detection guard`) from firing on the post-sync re-run that verifies the AT.
+- **Sync-resolution stub discipline.** Apply sync routing-decision resolutions to the target file, mirroring how preserve resolutions land in CHANGELOG markers (see `## Preserve-marker phrase set`). Leave the emitted AC stub as-emitted from emission through release-prep deletion; the implementation IS the resolution. This keeps the edit-detection guard (see `## Re-run behavior and edit-detection guard`) from firing on the post-sync re-run that verifies the AT.

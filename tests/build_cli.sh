@@ -163,6 +163,7 @@ test_colored_install_name() {
   local output
   output=$(
     NO_COLOR=
+    TERM=xterm-256color
     COLORTERM=truecolor
     GOVERNA_FORCE_TTY=1
     _color_init
