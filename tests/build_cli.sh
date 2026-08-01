@@ -62,14 +62,14 @@ test_build_parser() {
   rc=$?
   set -e
   assert_equal "$rc" 2
-  assert_contains "$output" 'available utilities: dos2unix tree'
+  assert_contains "$output" 'available utilities: brew-update dos2unix tree'
 
   set +e
   output=$(build_main tree,dos2unix 2>&1)
   rc=$?
   set -e
   assert_equal "$rc" 2
-  assert_contains "$output" 'available utilities: dos2unix tree'
+  assert_contains "$output" 'available utilities: brew-update dos2unix tree'
 
   for help_arg in -h '-?' --help; do
     output=$(build_main "$help_arg") || fail "$help_arg help failed"

@@ -170,6 +170,7 @@ Note: mixed-content files (AGENTS.md, `governa/development-guidelines.md`, `gove
 ### Versioning and Dependencies
 
 - Follow semver: PATCH for invisible changes (fixes, refactors, tooling), MINOR for user-visible changes (commands, flags, schema, behavior); batch PATCH-level changes.
+- Keep repository package versions separate from individual utility program versions; derive release versions from repository package semver and change a utility's program version only when its AC explicitly requires it.
 - Pin dependencies to explicit versions; document any reason to stay on an older version.
 
 ### Errors

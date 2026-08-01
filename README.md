@@ -1,8 +1,9 @@
 # rkit
 
 `rkit` provides small, standalone Rust command-line utilities. It currently
-includes `tree` for directory hierarchies and `dos2unix` for previewing or
-converting CRLF line endings.
+includes `tree` for directory hierarchies, `dos2unix` for previewing or
+converting CRLF line endings, and `brew-update` for maintaining Homebrew
+packages on macOS.
 
 ## Why
 
@@ -158,6 +159,25 @@ The Rust port preserves the Go utility's CRLF preview and byte-conversion
 semantics. It intentionally uses the package-wide Cargo version, terminal-aware
 color, help flags, options on either side of the operand, and exit code 2 for
 invalid arguments.
+
+## brew-update
+
+```text
+brew-update v1.3.5
+Update, upgrade, and clean up Homebrew packages.
+```
+
+On macOS, `brew-update` requires Homebrew's `brew` executable to be installed
+and available on `PATH`. It runs these operations in order: `brew update`,
+`brew upgrade`, one combined upgrade for all installed casks, and
+`brew cleanup -s`. Casks are read from `brew list --cask`; blank lines and
+surrounding whitespace are ignored.
+
+The exact terminal arguments `-v` and `--version` print the version without
+running Homebrew. All other arguments are accepted for compatibility and do
+not change the workflow. If Homebrew is missing or a command fails, the
+diagnostic identifies the operation and advises verifying Homebrew and `PATH`
+before retrying.
 
 ## Governance
 
