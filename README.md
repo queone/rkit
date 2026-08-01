@@ -45,9 +45,10 @@ rustup component add rustfmt clippy
 ```
 
 The canonical build formats, lints, tests, and release-builds the package in a
-temporary Cargo target outside the repository. After validation succeeds, it
-installs every package binary under `${CARGO_HOME:-$HOME/.cargo}/bin`. It
-leaves no repository-local `target/` directory.
+temporary Cargo target outside the repository. It validates each utility's
+module-local stable `PROGRAM_VERSION`, then builds and installs each utility in
+deterministic name order under `${CARGO_HOME:-$HOME/.cargo}/bin`. It leaves no
+repository-local `target/` directory.
 
 Pass space-separated utility names to validate, release-build, and install only
 those binaries:
@@ -69,7 +70,7 @@ Run `./build.sh` without targets for handoff and release validation.
 ## Tree
 
 ```text
-tree v<package-version>
+tree v1.4.0
 Directory tree printer — https://github.com/queone/rkit
 Usage
   tree [options] [directory]
@@ -114,7 +115,7 @@ tree -- -directory
 ## dos2unix
 
 ```text
-dos2unix v<package-version>
+dos2unix v1.4.0
 Preview or convert CRLF line endings — https://github.com/queone/rkit
 Usage
   dos2unix [options] [--] FILE
@@ -156,9 +157,9 @@ dos2unix -- -file.txt
 ```
 
 The Rust port preserves the Go utility's CRLF preview and byte-conversion
-semantics. It intentionally uses the package-wide Cargo version, terminal-aware
+semantics. It uses the utility's independent stable version, terminal-aware
 color, help flags, options on either side of the operand, and exit code 2 for
-invalid arguments.
+invalid arguments. The repository Cargo version is maintained separately.
 
 ## brew-update
 

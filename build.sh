@@ -251,6 +251,27 @@ _run_cargo() {
   return "$rc"
 }
 
+_run_cargo_install() { # target version output-path cargo-install-args...
+  local target="$1" version="$2" output_path="$3" log state rc
+  shift 3
+  log=$(mktemp "${TMPDIR:-/tmp}/rkit-cargo-install.XXXXXX") || {
+    _failure "cargo install $target failed; create a temporary output log and retry"
+    return 1
+  }
+  if [ -e "$output_path" ]; then state='Replacing'; else state='Installing'; fi
+  printf '    %s\n' "$(grn3 "$*")"
+  if "$@" >"$log" 2>&1; then
+    rm -f -- "$log"
+    printf '    %s %s v%s\n' "$state" "$output_path" "$version"
+    return 0
+  fi
+  rc=$?
+  cat "$log" >&2
+  rm -f -- "$log"
+  _failure "cargo install $target failed: exit status $rc"
+  return "$rc"
+}
+
 build_usage() {
   cat <<'EOF'
 Usage: build [utility ...] [-v|--verbose]
@@ -397,6 +418,59 @@ _available_target_text() {
   printf '%s' "${_bin_targets[*]}"
 }
 
+_utility_version_value=''
+
+_read_utility_version() { # $1=utility name -> sets _utility_version_value
+  local utility="$1" module result reason value
+  module="src/${utility//-/_}.rs"
+  if [ ! -f "$module" ]; then
+    _failure "build: validate utility version: $utility: missing module $module"
+    return 1
+  fi
+  result=$(awk '
+    BEGIN { mentions=0; declarations=0; value="" }
+    /PROGRAM_VERSION/ { mentions++ }
+    match($0, /^[[:space:]]*(pub[[:space:]]+)?const[[:space:]]+PROGRAM_VERSION[[:space:]]*:[[:space:]]*&str[[:space:]]*=[[:space:]]*"[^"]*"[[:space:]]*;/) {
+      declarations++
+      declaration=substr($0, RSTART, RLENGTH)
+      sub(/^.*=[[:space:]]*"/, "", declaration)
+      sub(/"[[:space:]]*;[[:space:]]*$/, "", declaration)
+      value=declaration
+    }
+    END {
+      if (mentions == 0) { print "missing"; exit }
+      if (declarations == 0) { print "malformed"; exit }
+      if (declarations > 1) { print "duplicate"; exit }
+      if (value !~ /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) {
+        print "malformed"; exit
+      }
+      print "ok\t" value
+    }' "$module")
+  reason=$(printf '%s\n' "$result" | awk -F '\t' 'NR==1 { print $1 }')
+  if [ "$reason" != ok ]; then
+    _failure "build: validate utility version: $utility: $reason PROGRAM_VERSION declaration in $module; require exactly one literal stable MAJOR.MINOR.PATCH value"
+    return 1
+  fi
+  value=$(printf '%s\n' "$result" | awk -F '\t' 'NR==1 { print $2 }')
+  _utility_version_value="$value"
+}
+
+_validate_utility_versions() {
+  local utility targets=()
+  if [ "$#" -gt 0 ]; then
+    targets=("$@")
+  else
+    targets=("${_bin_targets[@]}")
+  fi
+  printf '\n%s\n' "$(yel7 '==> Validate utility version declarations')"
+  for utility in "${targets[@]}"; do
+    _read_utility_version "$utility" || return 1
+    printf '    %s: PROGRAM_VERSION = %s\n' \
+      "$(cya4 "$utility")" "$(grn3 "\"$_utility_version_value\"")"
+  done
+  printf '\n'
+}
+
 _run_build_cli_tests() {
   printf '\n%s\n' "$(yel7 '==> Test build command routing')"
   printf '    %s\n' 'bash tests/build_cli.sh'
@@ -412,8 +486,9 @@ _run_build_cli_tests() {
 }
 
 _build_all_phases() {
-  local verbose="$1" install="$2" rc=0
+  local verbose="$1" install="$2"
   _load_bin_targets || return 1
+  _validate_utility_versions || return 1
 
   printf '%s\n' "$(yel7 '==> Check Rust formatting')"
   _run_cargo 'cargo fmt --check' rustfmt cargo fmt --check || return $?
@@ -455,26 +530,22 @@ _build_all_phases() {
   [ "$install" -eq 1 ] || return 0
   local install_root
   install_root=$(_cargo_install_root) || return 1
-  printf '\n%s\n' "$(yel7 '==> Install package binaries')"
-  if [ "$verbose" -eq 1 ]; then
-    _run_cargo 'cargo install package binaries' '' \
-      cargo install --verbose --path . --bins --all-features --locked \
-      --root "$install_root" --target-dir "$_cargo_target" || {
-        rc=$?
-        _failure \
-          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying'
-        return "$rc"
-      }
-  else
-    _run_cargo 'cargo install package binaries' '' \
-      cargo install --path . --bins --all-features --locked \
-      --root "$install_root" --target-dir "$_cargo_target" || {
-        rc=$?
-        _failure \
-          'build: install package binaries: declare at least one Cargo binary target and resolve destination conflicts before retrying'
-        return "$rc"
-      }
-  fi
+  local target
+  for target in "${_bin_targets[@]}"; do
+    printf '\n%s %s\n' "$(yel7 '==> Building and installing')" "$(grn3 "$target")"
+    _read_utility_version "$target" || return 1
+    local output_path="$install_root/bin/$target"
+    if [ "$verbose" -eq 1 ]; then
+      _run_cargo_install "$target" "$_utility_version_value" "$output_path" \
+        cargo install --verbose --path . --bin "$target" --force \
+        --all-features --locked --root "$install_root" \
+        --target-dir "$_cargo_target" || return $?
+    else
+      _run_cargo_install "$target" "$_utility_version_value" "$output_path" \
+        cargo install --path . --bin "$target" --force --all-features \
+        --locked --root "$install_root" --target-dir "$_cargo_target" || return $?
+    fi
+  done
 }
 
 _build_scoped_phases() {
@@ -483,6 +554,7 @@ _build_scoped_phases() {
   local targets=("$@") rc=0 target
   local cargo_targets=() cargo_tests=()
   _load_bin_targets || return 1
+  _validate_utility_versions "${targets[@]}" || return 1
   for target in "${targets[@]}"; do
     cargo_targets+=(--bin "$target")
     cargo_tests+=(--test "${target}_cli")
@@ -532,40 +604,37 @@ _build_scoped_phases() {
 
   local install_root
   install_root=$(_cargo_install_root) || return 1
-  printf '\n%s\n' "$(yel7 '==> Install selected package binaries')"
-  if [ "$verbose" -eq 1 ]; then
-    _run_cargo 'cargo install selected package binaries' '' \
-      cargo install --verbose --path . --no-track --force \
-      "${cargo_targets[@]}" --all-features --locked \
-      --root "$install_root" --target-dir "$_cargo_target" || {
-      rc=$?
-      _failure \
-        'build: install selected package binaries: resolve destination access before retrying'
-      return "$rc"
-    }
-  else
-    _run_cargo 'cargo install selected package binaries' '' \
-      cargo install --path . --no-track --force \
-      "${cargo_targets[@]}" --all-features --locked \
-      --root "$install_root" --target-dir "$_cargo_target" || {
-      rc=$?
-      _failure \
-        'build: install selected package binaries: resolve destination access before retrying'
-      return "$rc"
-    }
-  fi
+  for target in "${targets[@]}"; do
+    printf '\n%s %s\n' "$(yel7 '==> Building and installing')" "$(grn3 "$target")"
+    _read_utility_version "$target" || return 1
+    local output_path="$install_root/bin/$target"
+    if [ "$verbose" -eq 1 ]; then
+      _run_cargo_install "$target" "$_utility_version_value" "$output_path" \
+        cargo install --verbose --path . --no-track --force --bin "$target" \
+        --all-features --locked --root "$install_root" \
+        --target-dir "$_cargo_target" || return $?
+    else
+      _run_cargo_install "$target" "$_utility_version_value" "$output_path" \
+        cargo install --path . --no-track --force --bin "$target" \
+        --all-features --locked --root "$install_root" \
+        --target-dir "$_cargo_target" || return $?
+    fi
+  done
 }
 
 build_run() {
-  local verbose="$1"
+  local verbose="$1" rc next_tag
   shift
   local targets=("$@")
   _require_cargo || return 1
   if [ "${#targets[@]}" -eq 0 ]; then
-    _run_isolated _build_all_phases "$verbose" 1
+    _run_isolated _build_all_phases "$verbose" 1 || return $?
   else
-    _run_isolated _build_scoped_phases "$verbose" "${targets[@]}"
+    _run_isolated _build_scoped_phases "$verbose" "${targets[@]}" || return $?
   fi
+  next_tag=$(_next_release_tag) || return 1
+  printf '\n%s\n\n    ./build.sh %s %s\n' \
+    "$(yel7 '==> To release, run:')" "$next_tag" '"<release message>"'
 }
 
 _refresh_cargo_lock() {
@@ -692,6 +761,12 @@ _cargo_version_info() {
       }
       print literal
     }' "$manifest"
+}
+
+_next_release_tag() {
+  local current
+  current=$(_cargo_version_info Cargo.toml) || return 1
+  printf '%s\n' "$current" | awk -F. '{ printf "v%d.%d.%d\n", $1, $2, $3 + 1 }'
 }
 
 _replace_cargo_version() {

@@ -7,6 +7,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 const PROGRAM_NAME: &str = "dos2unix";
+pub const PROGRAM_VERSION: &str = "1.4.0";
 const WHITE: &str = "38;5;15";
 
 /// A command-line or filesystem failure with its process exit code.
@@ -200,7 +201,7 @@ where
     match parse_args(args)? {
         Command::Help => Ok(RunOutput::from_stdout(help(color).into_bytes())),
         Command::Version => Ok(RunOutput::from_stdout(
-            format!("{PROGRAM_NAME} v{}\n", env!("CARGO_PKG_VERSION")).into_bytes(),
+            format!("{PROGRAM_NAME} v{PROGRAM_VERSION}\n").into_bytes(),
         )),
         Command::Preview(path) => files
             .preview(&path)
@@ -277,7 +278,7 @@ Options\n\
   -v, --version  Print version and exit\n\
   -h, -?, --help Show this help message and exit\n\
   --             End option parsing\n",
-        env!("CARGO_PKG_VERSION")
+        PROGRAM_VERSION
     )
 }
 

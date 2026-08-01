@@ -98,17 +98,14 @@ fn help_and_version_forms_are_successful_terminal_requests() {
         assert!(output.status.success(), "{}", stderr(&output));
         assert!(output.stderr.is_empty());
         let text = String::from_utf8(output.stdout).unwrap();
-        assert!(text.starts_with(&format!("dos2unix v{}\n", env!("CARGO_PKG_VERSION"))));
+        assert!(text.starts_with("dos2unix v1.4.0\n"));
         assert!(text.contains("dos2unix [options] [--] FILE"));
         assert!(text.contains("-f, --force"));
     }
     for flag in ["-v", "--version"] {
         let output = run(["ignored", flag, "extra"]);
         assert!(output.status.success(), "{}", stderr(&output));
-        assert_eq!(
-            output.stdout,
-            format!("dos2unix v{}\n", env!("CARGO_PKG_VERSION")).as_bytes()
-        );
+        assert_eq!(output.stdout, b"dos2unix v1.4.0\n");
         assert!(output.stderr.is_empty());
     }
 }

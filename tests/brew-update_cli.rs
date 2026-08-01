@@ -87,7 +87,6 @@ fn stderr(output: &Output) -> String {
 
 #[test]
 fn version_forms_do_not_require_brew() {
-    assert_eq!(env!("CARGO_PKG_VERSION"), "1.4.0");
     for flag in ["-v", "--version"] {
         let fixture = Fixture::new("");
         let output = fixture

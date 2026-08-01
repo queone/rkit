@@ -111,6 +111,10 @@ test_scoped_command_routing() {
       shift 2
       printf 'cargo:%s\n' "$*"
     }
+    _run_cargo_install() {
+      shift 3
+      printf 'cargo:%s\n' "$*"
+    }
     _cargo_target="${TMPDIR:-/tmp}/rkit-build-test-target"
     _build_scoped_phases 1 tree
   ) || fail 'scoped command routing failed'
@@ -121,6 +125,127 @@ test_scoped_command_routing() {
   case "$output" in
   *dos2unix*) fail 'scoped tree routing included dos2unix' ;;
   esac
+  pass
+}
+
+test_individual_install_routing() {
+  local output
+  output=$(
+    _load_bin_targets() { _bin_targets=(brew-update dos2unix tree); }
+    _validate_utility_versions() { :; }
+    _run_build_cli_tests() { return 0; }
+    _cargo_install_root() { printf '%s' "${TMPDIR:-/tmp}/rkit-build-test-cargo"; }
+    _run_cargo() {
+      shift 2
+      printf 'cargo:%s\n' "$*"
+    }
+    _run_cargo_install() {
+      shift 3
+      printf 'cargo:%s\n' "$*"
+    }
+    _cargo_target="${TMPDIR:-/tmp}/rkit-build-test-target"
+    _build_all_phases 1 1
+  ) || fail 'individual install routing failed'
+  assert_contains "$output" '==> Building and installing brew-update'
+  assert_contains "$output" '==> Building and installing dos2unix'
+  assert_contains "$output" '==> Building and installing tree'
+  assert_contains "$output" 'cargo:cargo install --verbose --path . --bin brew-update --force'
+  assert_contains "$output" 'cargo:cargo install --verbose --path . --bin dos2unix --force'
+  assert_contains "$output" 'cargo:cargo install --verbose --path . --bin tree --force'
+  case "$output" in
+  *'==> Building and installing tree'*'==> Building and installing brew-update'*)
+    fail 'full install phases were not sorted' ;;
+  esac
+  pass
+}
+
+test_colored_install_name() {
+  local output
+  output=$(
+    NO_COLOR=
+    COLORTERM=truecolor
+    GOVERNA_FORCE_TTY=1
+    _color_init
+    _load_bin_targets() { _bin_targets=(brew-update dos2unix tree); }
+    _validate_utility_versions() { :; }
+    _run_build_cli_tests() { return 0; }
+    _cargo_install_root() { printf '%s' "${TMPDIR:-/tmp}/rkit-build-test-cargo"; }
+    _run_cargo() {
+      shift 2
+      printf 'cargo:%s\n' "$*"
+    }
+    _run_cargo_install() {
+      shift 3
+      printf 'cargo:%s\n' "$*"
+    }
+    _cargo_target="${TMPDIR:-/tmp}/rkit-build-test-target"
+    _build_all_phases 0 1
+  ) || fail 'colored install name failed'
+  assert_contains "$output" $'\033[38;5;34mtree\033[0m'
+  pass
+}
+
+test_quiet_install_status() {
+  local output path
+  path="${TMPDIR:-/tmp}/rkit-quiet-install-$PPID-$$"
+  rm -f -- "$path"
+  fake_install() {
+    printf 'Installing rkit v1.4.0\n'
+    printf 'Finished `release` profile\n'
+    printf 'Replacing /tmp/tree\n'
+    printf 'Replaced package rkit\n'
+  }
+  output=$(_run_cargo_install tree 1.4.0 "$path" fake_install) ||
+    fail 'quiet install status failed'
+  assert_contains "$output" "Installing $path v1.4.0"
+  case "$output" in
+  *'Installing rkit'*|*'Finished '*|*'Replacing /tmp/tree'*|*'Replaced package'*)
+    fail 'Cargo install progress was not suppressed' ;;
+  esac
+  pass
+}
+
+test_release_hint() {
+  local output
+  output=$(
+    _require_cargo() { return 0; }
+    _run_isolated() { "$@"; }
+    _build_all_phases() { printf 'build:%s\n' "$*"; }
+    _cargo_version_info() { printf '1.4.0\n'; }
+    build_run 0
+  ) || fail 'release hint failed'
+  assert_contains "$output" '==> To release, run:'
+  assert_contains "$output" './build.sh v1.4.1 "<release message>"'
+  pass
+}
+
+test_utility_version_validation() {
+  local fixture output rc
+  fixture=$(mktemp -d "${TMPDIR:-/tmp}/rkit-build-version.XXXXXX") ||
+    fail 'could not create utility-version fixture'
+  mkdir -p "$fixture/src"
+  printf 'pub const PROGRAM_VERSION: &str = "1.2.3";\n' >"$fixture/src/tree.rs"
+  output=$(cd "$fixture" && _read_utility_version tree && printf '%s' "$_utility_version_value") ||
+    fail 'valid utility version was rejected'
+  assert_equal "$output" '1.2.3'
+
+  printf 'const PROGRAM_VERSION: &str = "01.2.3";\n' >"$fixture/src/tree.rs"
+  set +e
+  output=$(cd "$fixture" && _read_utility_version tree 2>&1)
+  rc=$?
+  set -e
+  assert_equal "$rc" 1
+  assert_contains "$output" 'malformed PROGRAM_VERSION'
+
+  printf 'const PROGRAM_VERSION: &str = "1.2.3";\nconst PROGRAM_VERSION: &str = "1.2.4";\n' >"$fixture/src/tree.rs"
+  set +e
+  output=$(cd "$fixture" && _read_utility_version tree 2>&1)
+  rc=$?
+  set -e
+  assert_equal "$rc" 1
+  assert_contains "$output" 'duplicate PROGRAM_VERSION'
+
+  rm -rf -- "$fixture"
   pass
 }
 
@@ -361,12 +486,45 @@ test_release_prep_dry_run_has_no_writes() {
   pass
 }
 
+test_release_prep_preserves_utility_versions() {
+  local fixture before after output
+  fixture=$(mktemp -d "${TMPDIR:-/tmp}/rkit-prep-version.XXXXXX") ||
+    fail 'could not create prep version fixture'
+  mkdir -p "$fixture/governa" "$fixture/src"
+  printf '[package]\nname = "fixture"\nversion = "1.0.0"\n' >"$fixture/Cargo.toml"
+  printf 'pub const PROGRAM_VERSION: &str = "9.8.7";\n' >"$fixture/src/tree.rs"
+  printf '# Changelog\n\n| Version | Summary |\n|---------|---------|\n| Unreleased | |\n' \
+    >"$fixture/CHANGELOG.md"
+  (
+    cd "$fixture" || exit 1
+    git init -q
+    git config user.name fixture
+    git config user.email fixture@example.invalid
+    git add .
+    git commit -qm fixture
+  ) || fail 'could not initialize prep version fixture'
+  before=$(cksum "$fixture/src/tree.rs")
+  output=$(cd "$fixture" && _refresh_cargo_lock() { return 0; }; prep_run 0 1 v1.0.1 release) ||
+    fail 'release prep version fixture failed'
+  after=$(cksum "$fixture/src/tree.rs")
+  assert_equal "$before" "$after"
+  assert_contains "$(cat "$fixture/Cargo.toml")" 'version = "1.0.1"'
+  rm -rf -- "$fixture"
+  pass
+}
+
 test_build_parser
 test_main_dispatch
 test_scoped_command_routing
+test_individual_install_routing
+test_colored_install_name
+test_quiet_install_status
+test_release_hint
+test_utility_version_validation
 test_release_prep_full_build_routing
 test_manifest_preflight_failures
 test_release_decline_has_no_mutations
 test_release_prep_dry_run_has_no_writes
+test_release_prep_preserves_utility_versions
 
 printf 'build CLI tests: %d passed\n' "$test_count"

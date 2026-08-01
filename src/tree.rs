@@ -7,6 +7,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 const PROGRAM_NAME: &str = "tree";
+pub const PROGRAM_VERSION: &str = "1.4.0";
 const GREEN: &str = "38;5;46";
 const BLUE: &str = "38;5;21";
 const CYAN: &str = "38;5;51";
@@ -141,7 +142,7 @@ where
     match parse_args(args)? {
         Command::Help => Ok(RunOutput::new(help(color), Vec::new())),
         Command::Version => Ok(RunOutput::new(
-            format!("{PROGRAM_NAME} v{}\n", env!("CARGO_PKG_VERSION")),
+            format!("{PROGRAM_NAME} v{PROGRAM_VERSION}\n"),
             Vec::new(),
         )),
         Command::Tree {
@@ -216,7 +217,7 @@ Directory tree printer — https://github.com/queone/rkit\n\
   {name} -f /path/to/directory\n\
   {name} /path/to/directory --full-path\n\
   {name} -- -directory\n",
-        env!("CARGO_PKG_VERSION")
+        PROGRAM_VERSION
     )
 }
 
@@ -531,13 +532,10 @@ mod tests {
     }
 
     #[test]
-    fn derives_version_from_cargo_metadata() {
+    fn reports_utility_version() {
         let filesystem = source([]);
         let result = run_with(["--version"], &filesystem, ColorMode::new(false)).unwrap();
-        assert_eq!(
-            result.stdout(),
-            format!("tree v{}\n", env!("CARGO_PKG_VERSION"))
-        );
+        assert_eq!(result.stdout(), format!("tree v{PROGRAM_VERSION}\n"));
     }
 
     #[test]
