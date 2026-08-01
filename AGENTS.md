@@ -150,6 +150,19 @@ Note: mixed-content files (AGENTS.md, `governa/development-guidelines.md`, `gove
 
 ## Base Rules
 
+### Benchmarking
+
+- Follow `benchmarking/rust-vs-go.md` whenever the Director explicitly requests a Go/Rust performance comparison, including “benchmark Go versus Rust,” “compare the Go and Rust ports,” or “rerun the Rust/Go performance comparison.”
+- Benchmark `tree`, `dos2unix`, and `brew-update` by default.
+- Honor an explicitly narrower Director scope.
+- Preserve every existing dated Conclusion in `benchmarking/rust-vs-go.md`.
+- Append a new dated Conclusion to `benchmarking/rust-vs-go.md` after each requested benchmark run.
+- Record the hostname, timestamp, OS version, architecture, toolchains, source revisions, artifact identity, workloads, raw samples, derived results, and deviations in each Conclusion.
+- Append an `UNAVAILABLE` Conclusion with the failed command, missing prerequisite, omitted dimension, and deviation when a requested measurement cannot complete.
+- Avoid fabricating, silently skipping, or substituting a requested measurement.
+- Treat routine execution of the existing benchmark protocol as exempt from a new AC.
+- Draft a new AC when the benchmark methodology or scope changes.
+
 ### Build Verification
 
 - Start a validation cycle when an authorized change pass is ready for validation.

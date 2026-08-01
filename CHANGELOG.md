@@ -3,6 +3,7 @@
 | Version | Summary |
 |---------|---------|
 | Unreleased | AC2 ports the tree utility to a standard-library-only Rust binary with deterministic traversal, skipped-descendant warnings, contextual root failures, compatibility output, isolated builds, and Cargo installation; AC5 ports dos2unix with byte-safe preview and conversion, explicit multi-binary layout, contextual failures, and macOS toolchain setup; AC6 adds space-separated scoped Rust builds while preserving package-wide release validation; preserve README.md project content; preserve CHANGELOG.md project history |
+| 1.4.0 | AC8+AC9: add repeatable Go/Rust benchmark protocol |
 | 1.3.0 | AC7: port brew-update to Rust |
 | 1.2.0 | AC6: add scoped Rust builds |
 | 1.1.0 | AC5: port dos2unix and adopt multi-binary layout |
