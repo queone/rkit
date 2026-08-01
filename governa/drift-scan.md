@@ -23,7 +23,7 @@ governa drift-scan --flavor code --stack Rust
 
 Explicit selectors override their corresponding inference independently: `--flavor` overrides flavor inference, and `--stack` overrides manifest-based stack inference. `--stack` does not imply CODE; when flavor inference resolves to DOC, remove `--stack` or add `--flavor code`. Passing `--stack` with explicit DOC flavor is invalid. When CODE flavor is selected without a recognized manifest, pass `-s, --stack <name>`.
 
-Stack names remain free-form. First-class names such as `Go`, `Rust`, and `Terraform` select their stack overlays; another non-empty name selects generic CODE canon.
+Stack names remain free-form. First-class names such as `Go`, `Rust`, `Terraform`, and `Swift` select their stack overlays; another non-empty name selects generic CODE canon.
 
 ## What the tool emits
 

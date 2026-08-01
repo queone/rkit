@@ -66,6 +66,14 @@ For each part, use file path and line references for non-trivial findings. Repor
 - When work needs an AC, create or update the AC file in `governa/` before treating the work as scoped. Do not use a chat-only AC draft as the source of truth.
 - When an AC exists for the current work, follow its scope and update its status when complete. Do not expand scope without updating the AC first.
 - When an AC is completed, consolidate its decisions into durable docs or code. The AC file is removed during release prep (see `governa/build-release.md` Pre-Release Checklist).
+- Treat Ratify as the director's acceptance of delivered AC work; do not begin Package without a separate explicit request.
+- Treat Package as release preparation only; follow the existing pre-release checklist and approval boundaries.
+- Start every Package completion report with the plain, unbulleted, unindented
+  line `Package complete.`.
+- Insert exactly one blank line after `Package complete.` before `Verified:`.
+- Keep `Verified:`, `Red-teamed:`, `Not checked:`, and `Run below to release:`
+  in the Package completion report; state `No commit or release command
+  executed.` and present the exact drafted release command.
 - Flag completed AC files left in `governa/` as drift, unless they are designated keepers (`ac-template.md`).
 
 ### Response style

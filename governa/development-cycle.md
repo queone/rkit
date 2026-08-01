@@ -2,6 +2,18 @@
 
 This repo uses an acceptance-criteria-first workflow.
 
+## AC Workflow
+
+- Follow the four phases in order: Scan, Shape, Forge, and Ratify.
+- Start a cycle only when the director identifies the active AC and explicitly
+  requests Scan.
+- Use an unnumbered phase instruction when one AC is under `governa/`; require
+  the AC number when multiple ACs are present.
+- Pause after each phase until the director explicitly advances the active AC.
+- Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent
+  post-Ratify release-preparation requests; do not infer Package from Ratify
+  acceptance.
+
 ## Required Artifacts
 
 - `AGENTS.md`
@@ -18,7 +30,9 @@ This repo uses an acceptance-criteria-first workflow.
 4. **Implement code, tests, and direct doc updates together.**
 5. **Capture decisions in durable docs or code when the AC is complete.** The AC file is removed during release prep (see `governa/build-release.md` Pre-Release Checklist).
 6. **Run the build and validation flow.** See `governa/build-release.md`.
-7. **Perform release work only when explicitly requested.**
+7. **Perform Package only when explicitly requested.** Accept standalone
+   `Package`, `package`, `pack`, or `prep` in the active Ratified AC context;
+   follow `build-release.md` for the existing checklist and implementation.
 
 ## Notes
 

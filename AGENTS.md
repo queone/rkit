@@ -74,7 +74,7 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Stop and ask when a request is ambiguous, or when the change is hard to reverse.
 - Wait for explicit user request before preparing, executing, publishing, deploying, or distributing — including drafting commit messages, commit commands, version bumps, or release notes.
 - **Leave every `git commit` for the user to execute. No EXCEPTION.**
-- Treat an explicit "prep for release" request as the trigger for release-prep bookkeeping (CHANGELOG row insertion, release-tag drafting, commit-command drafting, release-command presentation).
+- Treat an explicit standalone `Package`, `package`, `pack`, or `prep` request in an active Ratified AC context as the trigger for release-prep bookkeeping (CHANGELOG row insertion, release-tag drafting, commit-command drafting, release-command presentation).
 - Follow the Pre-Release Checklist in `governa/build-release.md` when executing release-prep bookkeeping.
 
 ### AC-First Workflow
@@ -82,6 +82,53 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Treat every non-trivial change as AC-first work.
 - Draft `governa/ac<N>-<slug>.md` before implementation using `governa/ac-template.md`; define scope, out-of-scope, and acceptance tests.
 - Wait for explicit user confirmation that the AC is implementation-ready before starting implementation.
+
+### Four-Phase Workflow
+
+- Start each governed AC cycle in Scan when the AC is ready for adversarial review.
+- Challenge the AC, repository behavior, referenced documentation, scope, edge cases, omissions, and testability during Scan.
+- Keep Scan non-mutating; do not edit the AC or repository during Scan.
+- Pause after Scan and await explicit Director instruction to Shape.
+- Resolve Scan findings and incorporate settled Director decisions during Shape.
+- Pause Shape when a Director-specific decision remains unresolved.
+- Edit the AC during Shape; do not begin implementation during Shape.
+- Pause after Shape and await explicit Director implementation-ready confirmation to Forge.
+- Implement only the settled AC scope during Forge.
+- Return to Shape when Forge reveals a contract, scope, or Director decision change; return to Forge for implementation-only corrections.
+- Include tests, adversarial verification, and defect correction in Forge.
+- Pause after Forge and await Ratify.
+- Treat Ratify as the Director's final review of the delivered AC.
+- Return Ratify feedback to Shape for contract or scope changes.
+- Return Ratify feedback to Forge for implementation-only corrections.
+- Keep Ratify complete only after the Director accepts the delivered work.
+- Treat `Package` as the separate post-Ratify name for release preparation, not as a fifth AC phase.
+- Start `Package` only after an explicit Director request; do not infer it from Ratify acceptance.
+- Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent names for `Package` only after Ratify acceptance.
+- Preserve the existing release-prep implementation, behavior, commands, ordering, and approval boundaries during `Package`.
+
+### Phase-Advancement Rules
+
+- Treat only explicit Director phase-advancement language as authorization to enter the named next phase.
+- Start an AC cycle only when the Director identifies the active AC and explicitly requests Scan.
+- Apply an unnumbered phase instruction to the sole AC under `governa/`; require the AC number when multiple ACs are present.
+- Treat a compound request as authorization for only the named phase.
+- Pause before entering any phase not explicitly named by the Director.
+- Treat ambiguous, unrelated, or implicit replies as non-advancing feedback.
+- Interpret Scan, Shape, Forge, and Ratify as workflow phases only in the context of the active AC cycle.
+- Interpret `Package` as the post-Ratify release-preparation action only after Ratify acceptance and an explicit Director request.
+- Interpret standalone `Package`, `package`, `pack`, and `prep` as equivalent Package instructions only in that context.
+- Do not interpret `run ./build.sh prep ...`, `pack the binary`, `prepare the build`, or non-standalone `prep` as workflow advancement.
+- Treat ordinary coding language such as `build`, `package the binary`, or a package-manager command as unrelated to phase advancement.
+- Require explicit operational wording such as `run ./build.sh` before executing a repository command; never infer a shell command from a phase name.
+
+### Primary And Ancillary Scope
+
+- Capture the resolved current working directory as the primary repository at session entry.
+- Keep the primary repository and current phase visible in every phase report.
+- Label work in another repository or path as `Ancillary work` only after the Director explicitly requests it.
+- Report the ancillary repository or path and authorization separately from the primary phase.
+- Prevent ancillary work from satisfying primary-repository scope, tests, validation, or phase gates.
+- Restate the primary repository and paused phase when returning from ancillary work.
 
 ### AC Critique Gate
 
@@ -140,28 +187,18 @@ Note: mixed-content files (AGENTS.md, `governa/development-guidelines.md`, `gove
 - Treat AC-document ceremony issues as nits after implementation starts and the AC is expected to be deleted at release prep; prioritize defects that affect the delivered contract, implementation scope, tests, or release safety.
 - Report "no issues" directly when none are found; note any residual risk or verification gaps.
 - Keep completions terse — what changed, flat bullets, and a final `Awaiting <specific Director-initiated next>.` line; skip "What's in it" / "Main conclusion" / "Next steps" headers unless asked.
-- Never prescribe commit, push, or release actions in the sign-off; the Director triggers those — the sign-off names what's pending, not what to do.
+- Never prescribe commit, push, or release actions in Ratify; the Director triggers those — Ratify names what's pending, not what to do.
 - Skip settled repo mechanics in completions, including symlink behavior, mirror mechanics, governance structure, and contract conventions.
 - Default to plain text and simple bullets; reach for tables or richer structure only when content clearly benefits.
 - Note skipped checks only when the omission is unusual or affects confidence.
 - Run required validation gates, but report successful routine gates only when they materially affect confidence; always report failures and skipped required gates.
 - Present architectural decisions to the director as: a recommendation when one viable option exists; two bounded options plus a recommendation when two exist; the best two plus a one-line note on the rest when more than two exist.
 - Include the three-part self-review structure (Verified / Red-teamed / Not checked) defined in `governa/roles.md` in every substantial completion report, even when the default is terse.
+- Start every Package completion report with the plain, unbulleted, unindented line `Package complete.`.
+- Insert exactly one blank line after `Package complete.` before `Verified:`.
+- Keep `Verified:`, `Red-teamed:`, `Not checked:`, and `Run below to release:` in the Package completion report; state `No commit or release command executed.` and present the exact drafted release command.
 
 ## Base Rules
-
-### Benchmarking
-
-- Follow `benchmarking/rust-vs-go.md` whenever the Director explicitly requests a Go/Rust performance comparison, including “benchmark Go versus Rust,” “compare the Go and Rust ports,” or “rerun the Rust/Go performance comparison.”
-- Benchmark `tree`, `dos2unix`, and `brew-update` by default.
-- Honor an explicitly narrower Director scope.
-- Preserve every existing dated Conclusion in `benchmarking/rust-vs-go.md`.
-- Append a new dated Conclusion to `benchmarking/rust-vs-go.md` after each requested benchmark run.
-- Record the hostname, timestamp, OS version, architecture, toolchains, source revisions, artifact identity, workloads, raw samples, derived results, and deviations in each Conclusion.
-- Append an `UNAVAILABLE` Conclusion with the failed command, missing prerequisite, omitted dimension, and deviation when a requested measurement cannot complete.
-- Avoid fabricating, silently skipping, or substituting a requested measurement.
-- Treat routine execution of the existing benchmark protocol as exempt from a new AC.
-- Draft a new AC when the benchmark methodology or scope changes.
 
 ### Build Verification
 
@@ -183,7 +220,6 @@ Note: mixed-content files (AGENTS.md, `governa/development-guidelines.md`, `gove
 ### Versioning and Dependencies
 
 - Follow semver: PATCH for invisible changes (fixes, refactors, tooling), MINOR for user-visible changes (commands, flags, schema, behavior); batch PATCH-level changes.
-- Keep repository package versions separate from individual utility program versions; derive release versions from repository package semver and change a utility's program version only when its AC explicitly requires it.
 - Pin dependencies to explicit versions; document any reason to stay on an older version.
 
 ### Errors
@@ -214,6 +250,21 @@ Note: `CLAUDE.md` is an example of an exempt identifier — it names the Claude 
 - Reuse content from files already in conversation context; reach for `Read` only to fetch unseen content or check for recent changes.
 
 ## Project Rules
+
+### Benchmarking
+
+- Follow `benchmarking/rust-vs-go.md` whenever the Director explicitly requests a Go/Rust performance comparison, including “benchmark Go versus Rust,” “compare the Go and Rust ports,” or “rerun the Rust/Go performance comparison.”
+- Benchmark `tree`, `dos2unix`, and `brew-update` by default.
+- Honor an explicitly narrower Director scope.
+- Preserve every existing dated Conclusion in `benchmarking/rust-vs-go.md`.
+- Append a new dated Conclusion to `benchmarking/rust-vs-go.md` after each requested benchmark run.
+- Record the hostname, timestamp, OS version, architecture, toolchains, source revisions, artifact identity, workloads, raw samples, derived results, and deviations in each Conclusion.
+- Append an `UNAVAILABLE` Conclusion with the failed command, missing prerequisite, omitted dimension, and deviation when a requested measurement cannot complete.
+- Avoid fabricating, silently skipping, or substituting a requested measurement.
+- Treat routine execution of the existing benchmark protocol as exempt from a new AC.
+- Draft a new AC when the benchmark methodology or scope changes.
+
+- Keep repository package versions separate from individual utility program versions; derive release versions from repository package semver and change a utility's program version only when its AC explicitly requires it.
 
 - Propagate every source-level change to `internal/` Go code (not governance text) to two sites in the same pass — the source file and its overlay template under `internal/templates/overlays/`; validate with `./build.sh`.
 - Mirror every AGENTS.md change that applies to consumer repos across governa source `AGENTS.md`, `internal/templates/base/AGENTS.md`, and `internal/templates/overlays/doc/files/AGENTS.md.tmpl` (CODE consumer inherits base unchanged) before staging the commit.

@@ -2,7 +2,8 @@
 
 Engineering guidance for any agent or contributor working in this repo.
 These are durable coding practices, not workflow or process rules.
-For workflow, see `development-cycle.md`. For validation, see `build-release.md`.
+For AC workflow, see `AGENTS.md` and `development-cycle.md`. For validation
+and Package release preparation, see `build-release.md`.
 Sections above ## Project Practices are governa-maintained canon and update via canon syncs; repo-specific practices in ## Project Practices.
 
 ## Identifier Strategy
@@ -29,12 +30,14 @@ Sections above ## Project Practices are governa-maintained canon and update via 
 - Grep the full repo for the pattern being changed before considering a fix complete
 - If a template and its rendered output diverge, the template is authoritative
 - Keep `build.sh` self-contained; do not add sourced production helper modules.
+- Propagate stack build behavior through the affected template under `internal/templates/overlays/code/stacks/`.
 
 ## Error Handling And Validation
 
 - Validate at system boundaries (user input, external APIs, file I/O); trust internal code
 - Fail explicitly rather than silently degrading — a clear error is better than wrong output
 - Static analysis and linting errors are build failures, not warnings
+- Validate installable-target declarations before compiling or installing them.
 
 ## Testing Expectations
 
@@ -67,19 +70,18 @@ Sections above ## Project Practices are governa-maintained canon and update via 
 ## Rust Practices
 
 - Run all repository validation through `./build.sh`.
-- Pass space-separated utility names only for routine scoped validation.
-- Run `./build.sh` without targets before handoff and during release validation.
-- Declare at least one Cargo binary target.
-- Map each explicit Cargo binary to `src/bin/<utility>.rs`.
-- Map each Cargo binary to `tests/<utility>_cli.rs`.
-- Disable color in build-command tests that assert literal output.
+- Declare every installable Cargo binary with an explicit literal `[[bin]]` name and path.
+- Use space-separated binary names for scoped builds.
+- Keep selected target order deterministic under the byte locale.
 - Keep Cargo compilation artifacts in the build-managed temporary target.
-- Install all Cargo binary targets with tracked Cargo metadata during full builds.
-- Install selected Cargo binaries with `--no-track --force` during scoped builds.
-- Preserve unselected binaries and Cargo tracking metadata during scoped builds.
-- Warn that scoped installation can overwrite a same-named selected binary.
+- Validate formatting and shared library code package-wide during scoped builds.
+- Limit binary checks, matching integration tests, release artifacts, and installation to selected targets.
+- Install all Cargo binary targets with tracked installation during a full build.
+- Install selected Cargo binaries with `--no-track --force` during a scoped build.
+- Preserve unselected installed binaries and Cargo tracking metadata during scoped installation.
 - Install binaries only during successful post-change release validation.
 - Skip binary installation during pre-change validation and `--no-build` release prep.
+- Run release-prep pre-change and post-change validation package-wide.
 - Set `CARGO_HOME` to an external path when isolating binary installation.
 - Resolve installed-binary name conflicts before rerunning the build.
 - Format Rust code with rustfmt.
