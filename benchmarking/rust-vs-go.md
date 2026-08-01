@@ -7,12 +7,16 @@ utilities with their Go counterparts:
 - `dos2unix`
 - `brew-update`
 
-Each run appends one dated `Conclusion` block. Never replace or silently
-rewrite an earlier block. A run is valid only when its environment, artifacts,
+Each run appends one dated `Conclusion` block. Preserve earlier run data and
+dates; apply presentation-only migrations only under an approved AC. A run is
+valid only when its environment, artifacts,
 workloads, raw samples, derived values, and deviations are recorded together.
-Every `Conclusion` block must include the compact summary table shown below,
-using that run's artifact sizes and median standard-workload results. Use
-`UNAVAILABLE` in a cell when the corresponding measurement could not be made.
+Every `Conclusion` block must include one visible summary table with these
+columns, in order: `Utility`, `Rust bytes`, `Go bytes`, `Rust size reduction`,
+`Rust runtime`, `Go runtime`, `Rust runtime improvement`, `Rust clean build`,
+and `Go clean build`. Use that run's artifact sizes and median standard-workload
+results. Use `UNAVAILABLE` in a cell when the corresponding measurement could
+not be made.
 
 ## Run contract
 
@@ -41,11 +45,11 @@ Do not substitute a different binary or silently skip a utility.
 
 ## Environment
 
-Record this information before timing anything:
+Record this information before timing anything. Do not record machine names or
+other machine identity values:
 
 ```bash
 date -u '+%Y-%m-%dT%H:%M:%SZ'
-hostname
 sw_vers -productName
 sw_vers -productVersion
 uname -m
@@ -56,8 +60,8 @@ git -C "$RKIT_ROOT" rev-parse HEAD
 git -C "$GO_UTILS_ROOT" rev-parse HEAD
 ```
 
-On non-macOS Unix hosts, record equivalent OS-release and kernel information
-and state the substitutions in the run block.
+On non-macOS Unix hosts, record equivalent OS-release information and state the
+substitutions in the run block. Do not record kernel machine identity values.
 
 ## Artifact identity
 
@@ -73,9 +77,10 @@ done
 
 On Linux, use `stat -c '%n %s bytes'` and `sha256sum` instead. Record each path,
 architecture, byte size, checksum, and whether it is an installed artifact or
-a freshly built artifact. Do not compare artifacts with different
-architectures or optimization modes without labeling the comparison as
-changed methodology.
+a freshly built artifact in a supporting artifact table. Use repository-safe
+path placeholders instead of machine-specific absolute paths in committed
+content. Do not compare artifacts with different architectures or optimization
+modes without labeling the comparison as changed methodology.
 
 ## Workloads
 
@@ -230,10 +235,13 @@ Before accepting results, verify that:
 
 ## Raw samples
 
-Create a table for every run containing the five runtime samples, three clean
-compile samples, and three warm compile samples for each utility/language pair.
-Keep the raw values even when a sample is an outlier. Record batch size beside
-each runtime series and record target/cache policy beside each compile series.
+Create one table for every run containing the five runtime samples, five
+startup-only samples, three clean compile samples, and three warm compile
+samples for each utility/language pair. Keep the raw values even when a sample
+is an outlier. Record batch size beside each runtime series and record
+target/cache policy beside each compile series. Place each conclusion's complete
+raw-sample table inside one closed `<details>` block with
+`<summary>Raw samples</summary>` and no `open` attribute.
 
 ## Limitations
 
@@ -247,22 +255,33 @@ universal maintainability property.
 
 ## Conclusion — 2026-08-01 baseline
 
-Run timestamp: `2026-08-01T14:50:26Z`. Environment: hostname `np10`; macOS
+Run timestamp: `2026-08-01T14:50:26Z`. Environment: macOS
 `26.6`; arm64; Rust `1.97.1`, Cargo
 `1.97.1`, Go `1.26.5`; rkit revision
 `428191e55f48258b1f8a6c7eb2239b5a2b216a7d`; Go utilities revision
 `f403359f181bdf5c9e1f8ac04a0845673295e598`; release artifacts from the
 configured installed binary directories; Rust Cargo release builds and Go
-`-trimpath` builds. The benchmark used five runtime samples and three
-clean/warm compile samples, reporting medians.
+`-trimpath` builds. The benchmark used five runtime samples, five startup-only
+samples, and three clean/warm compile samples, reporting medians.
 
-Artifact checksums for this baseline, in `tree`, `dos2unix`,
-`brew-update` order:
+<details>
+<summary>Artifact identity</summary>
 
-| Artifact set | SHA-256 checksums |
-|---|---|
-| Rust | `42548f38b2f6d12c071f06939219b8c82b4c977b6189d025f276a85a7cbed1da`, `317cbee2fd229e6cbdae373b1b8574b58a262f9c0f1b93a64a7582d84edaefe6`, `cbdcad3db786f6adddc86b2788f57658f1e0db9579180e4c7e5f91a95387b47e` |
-| Go | `ffa0742604774648d8c59977d1eef5d92c18e9e53af6ccee609a11752ed94d32`, `f43b97d41e15b08f77f19e6db6ceb4e82ef235ce7dc02fa7f27e3d4966532e00`, `df2456cbc8664ff9032b4fe50c97c35d55afcfb095cd2fdba0b8bdc3da039431` |
+Artifact identity:
+
+| Artifact | Path placeholder | Architecture | Bytes | SHA-256 | Provenance |
+|---|---|---|---:|---|---|
+| Rust `tree` | `$HOME/.cargo/bin/tree` | arm64 Mach-O | 475,744 | `42548f38b2f6d12c071f06939219b8c82b4c977b6189d025f276a85a7cbed1da` | Installed release |
+| Rust `dos2unix` | `$HOME/.cargo/bin/dos2unix` | arm64 Mach-O | 456,144 | `317cbee2fd229e6cbdae373b1b8574b58a262f9c0f1b93a64a7582d84edaefe6` | Installed release |
+| Rust `brew-update` | `$HOME/.cargo/bin/brew-update` | arm64 Mach-O | 498,464 | `cbdcad3db786f6adddc86b2788f57658f1e0db9579180e4c7e5f91a95387b47e` | Installed release |
+| Go `tree` | `$GOPATH/bin/tree` | arm64 Mach-O | 1,960,882 | `ffa0742604774648d8c59977d1eef5d92c18e9e53af6ccee609a11752ed94d32` | Installed release |
+| Go `dos2unix` | `$GOPATH/bin/dos2unix` | arm64 Mach-O | 1,691,074 | `f43b97d41e15b08f77f19e6db6ceb4e82ef235ce7dc02fa7f27e3d4966532e00` | Installed release |
+| Go `brew-update` | `$GOPATH/bin/brew-update` | arm64 Mach-O | 1,860,898 | `df2456cbc8664ff9032b4fe50c97c35d55afcfb095cd2fdba0b8bdc3da039431` | Installed release |
+
+</details>
+
+<details>
+<summary>Raw samples</summary>
 
 Raw baseline samples follow. Runtime values are batch totals in seconds;
 divide by 100 or 20 as specified above. Version values are batch totals for
@@ -283,54 +302,49 @@ divide by 100 or 20 as specified above. Version values are batch totals for
 | `dos2unix` warm compile | `0.01, 0.01, 0.01` | `0.07, 0.07, 0.07` |
 | `brew-update` warm compile | `0.01, 0.01, 0.01` | `0.08, 0.07, 0.08` |
 
-| Utility | Rust bytes | Go bytes | Rust size reduction | Rust runtime | Go runtime | Rust clean build | Go clean build |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `tree` | 475,744 | 1,960,882 | 75.7% | 1.9 ms | 2.4 ms | 0.45 s | 1.52 s |
-| `dos2unix` | 456,144 | 1,691,074 | 73.0% | 5.0 ms | 6.0 ms | 0.40 s | 1.46 s |
-| `brew-update` | 498,464 | 1,860,898 | 73.2% | 5.5 ms | 8.0 ms | 0.40 s | 1.50 s |
+</details>
 
-Startup-only version medians were `1.53 ms` versus `2.02 ms` for `tree`,
-`1.54 ms` versus `1.97 ms` for `dos2unix`, and `1.59 ms` versus `2.02 ms`
-for `brew-update`, Rust versus Go. These correspond to approximately 24%,
-22%, and 21% faster startup respectively.
+| Utility | Rust bytes | Go bytes | Rust size reduction | Rust runtime | Go runtime | Rust runtime improvement | Rust clean build | Go clean build |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `tree` | 475,744 | 1,960,882 | 75.7% | 1.9 ms | 2.4 ms | 20.8% | 0.45 s | 1.52 s |
+| `dos2unix` | 456,144 | 1,691,074 | 73.0% | 5.0 ms | 6.0 ms | 16.7% | 0.40 s | 1.46 s |
+| `brew-update` | 498,464 | 1,860,898 | 73.2% | 5.5 ms | 8.0 ms | 31.3% | 0.40 s | 1.50 s |
 
-Rust binaries were approximately 3.7–4.1 times smaller, representative
-runtime was approximately 17–31% faster, and clean compilation was
-approximately 3.4–3.8 times faster. Warm no-op builds were approximately
-10 ms for Rust versus 70–80 ms for Go in this environment. The maintenance
-comparison favored Rust for this repository because it has a standard-library-only
-runtime, shared infrastructure, stricter compile-time checks, and stronger
-regression coverage; Go remained simpler for small isolated edits and had a
-lower onboarding cost. These are repository- and environment-specific findings,
-not universal properties of either language.
-
-Future runs must append a new `## Conclusion — YYYY-MM-DD` block below this
-baseline, preserve all previous blocks, and include the complete per-run
-environment and artifact identity record even when results are unavailable.
-
-```bash
-rm -rf "$bench_root"
-```
+Startup medians were 1.53/2.02 ms, 1.54/1.97 ms, and 1.59/2.02 ms for
+`tree`, `dos2unix`, and `brew-update`, Rust/Go; warm medians were 0.01/0.07 s.
+Rust was 17–31% faster, 73–76% smaller, and 3.4–3.8× faster to build; results
+remain repository- and environment-specific.
 
 ## Conclusion — 2026-08-01 rerun
 
-Run timestamp: `2026-08-01T14:55:47Z`. Environment: hostname `np10`; macOS
+Run timestamp: `2026-08-01T14:55:47Z`. Environment: macOS
 `26.6`; arm64; Rust `1.97.1`, Cargo `1.97.1`, Go `1.26.5`; rkit revision
 `428191e55f48258b1f8a6c7eb2239b5a2b216a7d`; Go utilities revision
 `f403359f181bdf5c9e1f8ac04a0845673295e598`; release artifacts from the
 configured installed binary directories; Rust Cargo release builds and Go
-`-trimpath` builds. The empty-cask baseline used five runtime samples and
-three clean/warm compile samples. The populated-cask supplemental workload
-used five runtime samples. No source or binary artifact changed from the
-prior baseline.
+`-trimpath` builds. The empty-cask baseline used five runtime samples, five
+startup-only samples, and three clean/warm compile samples. The populated-cask
+supplemental workload used five runtime samples. No source or binary artifact
+changed from the prior baseline.
 
-Artifact checksums were unchanged from the prior baseline, in `tree`,
-`dos2unix`, `brew-update` order:
+<details>
+<summary>Artifact identity</summary>
 
-| Artifact set | SHA-256 checksums |
-|---|---|
-| Rust | `42548f38b2f6d12c071f06939219b8c82b4c977b6189d025f276a85a7cbed1da`, `317cbee2fd229e6cbdae373b1b8574b58a262f9c0f1b93a64a7582d84edaefe6`, `cbdcad3db786f6adddc86b2788f57658f1e0db9579180e4c7e5f91a95387b47e` |
-| Go | `ffa0742604774648d8c59977d1eef5d92c18e9e53af6ccee609a11752ed94d32`, `f43b97d41e15b08f77f19e6db6ceb4e82ef235ce7dc02fa7f27e3d4966532e00`, `df2456cbc8664ff9032b4fe50c97c35d55afcfb095cd2fdba0b8bdc3da039431` |
+Artifact identity was unchanged from the prior baseline:
+
+| Artifact | Path placeholder | Architecture | Bytes | SHA-256 | Provenance |
+|---|---|---|---:|---|---|
+| Rust `tree` | `$HOME/.cargo/bin/tree` | arm64 Mach-O | 475,744 | `42548f38b2f6d12c071f06939219b8c82b4c977b6189d025f276a85a7cbed1da` | Installed release |
+| Rust `dos2unix` | `$HOME/.cargo/bin/dos2unix` | arm64 Mach-O | 456,144 | `317cbee2fd229e6cbdae373b1b8574b58a262f9c0f1b93a64a7582d84edaefe6` | Installed release |
+| Rust `brew-update` | `$HOME/.cargo/bin/brew-update` | arm64 Mach-O | 498,464 | `cbdcad3db786f6adddc86b2788f57658f1e0db9579180e4c7e5f91a95387b47e` | Installed release |
+| Go `tree` | `$GOPATH/bin/tree` | arm64 Mach-O | 1,960,882 | `ffa0742604774648d8c59977d1eef5d92c18e9e53af6ccee609a11752ed94d32` | Installed release |
+| Go `dos2unix` | `$GOPATH/bin/dos2unix` | arm64 Mach-O | 1,691,074 | `f43b97d41e15b08f77f19e6db6ceb4e82ef235ce7dc02fa7f27e3d4966532e00` | Installed release |
+| Go `brew-update` | `$GOPATH/bin/brew-update` | arm64 Mach-O | 1,860,898 | `df2456cbc8664ff9032b4fe50c97c35d55afcfb095cd2fdba0b8bdc3da039431` | Installed release |
+
+</details>
+
+<details>
+<summary>Raw samples</summary>
 
 Raw rerun samples are batch totals in seconds. Runtime batches were 100 for
 `tree` and 20 for `dos2unix` and `brew-update`; version batches were 1,000.
@@ -352,29 +366,76 @@ Compile values are seconds.
 | `dos2unix` warm compile | `0.01, 0.01, 0.01` | `0.07, 0.07, 0.07` |
 | `brew-update` warm compile | `0.01, 0.01, 0.01` | `0.08, 0.07, 0.07` |
 
-The empty-cask medians were 2.0 ms versus 2.5 ms for `tree`, 5.0 ms versus
-6.0 ms for `dos2unix`, and 5.5 ms versus 8.0 ms for `brew-update`, Rust versus
-Go. The populated-cask supplemental medians were 13 ms versus 16 ms for
-`brew-update`. Startup-only medians were 1.53 ms versus 2.03 ms for `tree`,
-1.53 ms versus 1.93 ms for `dos2unix`, and 1.62 ms versus 2.10 ms for
-`brew-update`. Clean-build medians were 0.45/0.39/0.40 seconds for Rust and
-1.53/1.46/1.51 seconds for Go in `tree`/`dos2unix`/`brew-update` order.
-Warm-build medians were 0.01 seconds for all Rust utilities and 0.07/0.07/0.07
-seconds for Go.
+</details>
 
-| Utility | Rust bytes | Go bytes | Rust size reduction | Rust runtime | Go runtime | Rust clean build | Go clean build |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `tree` | 475,744 | 1,960,882 | 75.7% | 2.0 ms | 2.5 ms | 0.45 s | 1.53 s |
-| `dos2unix` | 456,144 | 1,691,074 | 73.0% | 5.0 ms | 6.0 ms | 0.39 s | 1.46 s |
-| `brew-update` | 498,464 | 1,860,898 | 73.2% | 5.5 ms | 8.0 ms | 0.40 s | 1.51 s |
+| Utility | Rust bytes | Go bytes | Rust size reduction | Rust runtime | Go runtime | Rust runtime improvement | Rust clean build | Go clean build |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `tree` | 475,744 | 1,960,882 | 75.7% | 2.0 ms | 2.5 ms | 20.0% | 0.45 s | 1.53 s |
+| `dos2unix` | 456,144 | 1,691,074 | 73.0% | 5.0 ms | 6.0 ms | 16.7% | 0.39 s | 1.46 s |
+| `brew-update` | 498,464 | 1,860,898 | 73.2% | 5.5 ms | 8.0 ms | 31.3% | 0.40 s | 1.51 s |
 
-The comparison remains consistent with the baseline: Rust artifacts are about
-73–76% smaller, representative execution is about 17–31% faster for the
-empty-cask workloads and about 19% faster for the populated-cask supplemental
-workload, and clean compilation is about 3.4–3.8 times faster. The Go warm
-builds emitted a permission warning while attempting to update the protected
-module stat cache, but all builds completed successfully; this is a recorded
-cache-permission deviation from the ideal prewarmed-cache procedure. No
-maintenance conclusion changed: Rust remains the better fit for this
-repository’s dependency, testing, and shared-infrastructure profile, while Go
-remains simpler for small isolated edits.
+Startup medians were 1.53/2.03 ms, 1.53/1.93 ms, and 1.62/2.10 ms;
+populated-cask `brew-update` was 13/16 ms, Rust/Go. Rust remained 17–31%
+faster and 73–76% smaller; a Go cache-permission warning was recorded.
+
+## Conclusion — 2026-08-01 machine run
+
+Run timestamp: `2026-08-01T16:01:16Z`. Environment: macOS
+`26.6`; arm64; Rust `1.97.1`, Cargo `1.97.1`, Go `1.26.5`; rkit revision
+`3b26af4888058829f7adf1495a313925dc45845f`; Go utilities revision
+`f403359f181bdf5c9e1f8ac04a0845673295e598`. Resolved artifact locations were
+`$HOME/.cargo/bin` for Rust and `$GOPATH/bin` for Go; source checkouts were
+the rkit root and its sibling Go utilities checkout. Artifacts were installed
+release binaries, all arm64 Mach-O executables. The baseline used five runtime
+samples, five startup-only samples, and three clean/warm compile samples.
+
+<details>
+<summary>Artifact identity</summary>
+
+Artifact identity:
+
+| Artifact | Path placeholder | Architecture | Bytes | SHA-256 | Provenance |
+|---|---|---|---:|---|---|
+| Rust `tree` | `$HOME/.cargo/bin/tree` | arm64 Mach-O | 475,744 | `988d8e4ec2f443d67e8c9284bce8199bae4921f1f452c48e8a263a477803ecf5` | Installed release |
+| Rust `dos2unix` | `$HOME/.cargo/bin/dos2unix` | arm64 Mach-O | 456,144 | `bd12d2c9a82ba79a29c2d965ce8880f44819c15738d57c634cce6a8cf490ebee` | Installed release |
+| Rust `brew-update` | `$HOME/.cargo/bin/brew-update` | arm64 Mach-O | 498,464 | `75649666442186910488499b450e8478d97cd9586db1e95ad27aed7b9b65de94` | Installed release |
+| Go `tree` | `$GOPATH/bin/tree` | arm64 Mach-O | 1,960,882 | `211afe89c50e98d9af1644a02788dfae72adf02c4880f80acd9e0c0f0c02805b` | Installed release |
+| Go `dos2unix` | `$GOPATH/bin/dos2unix` | arm64 Mach-O | 1,691,074 | `723807b4cacfddb452fc1f156ee122e3245bd4fcf3ff7e8d944015da2c587cbd` | Installed release |
+| Go `brew-update` | `$GOPATH/bin/brew-update` | arm64 Mach-O | 1,860,898 | `9c6d30b4b5401dd4a5491a71f943028f3ba5c10f0a7f0de8621641706deaa795` | Installed release |
+
+</details>
+
+<details>
+<summary>Raw samples</summary>
+
+Raw samples are batch totals in seconds. Runtime batches were 100 for
+`tree`, 20 for `dos2unix` and `brew-update`; startup-only batches were 1,000.
+Compile values are seconds.
+
+| Measurement | Rust samples | Go samples |
+|---|---|---|
+| `tree` runtime, batch 100 | `0.20, 0.20, 0.20, 0.20, 0.20` | `0.25, 0.25, 0.25, 0.25, 0.25` |
+| `dos2unix` runtime, batch 20 | `0.11, 0.11, 0.11, 0.11, 0.11` | `0.12, 0.12, 0.12, 0.12, 0.12` |
+| `brew-update` runtime, batch 20 | `0.12, 0.11, 0.11, 0.11, 0.11` | `0.15, 0.16, 0.15, 0.15, 0.15` |
+| `tree` version, batch 1,000 | `1.59, 1.58, 1.61, 1.57, 1.58` | `2.00, 2.05, 2.05, 2.04, 2.01` |
+| `dos2unix` version, batch 1,000 | `1.59, 1.59, 1.59, 1.59, 1.59` | `2.01, 2.00, 2.01, 2.00, 2.00` |
+| `brew-update` version, batch 1,000 | `1.66, 1.66, 1.66, 1.66, 1.66` | `2.08, 2.08, 2.08, 2.08, 2.08` |
+| `tree` clean compile | `0.82, 0.48, 0.48` | `2.01, 1.88, 1.88` |
+| `dos2unix` clean compile | `0.41, 0.41, 0.41` | `1.81, 1.81, 1.81` |
+| `brew-update` clean compile | `0.42, 0.42, 0.42` | `1.81, 1.80, 1.80` |
+| `tree` warm compile | `0.01, 0.01, 0.01` | `0.07, 0.07, 0.07` |
+| `dos2unix` warm compile | `0.01, 0.01, 0.01` | `0.07, 0.07, 0.07` |
+| `brew-update` warm compile | `0.01, 0.01, 0.01` | `0.07, 0.07, 0.07` |
+
+</details>
+
+| Utility | Rust bytes | Go bytes | Rust size reduction | Rust runtime | Go runtime | Rust runtime improvement | Rust clean build | Go clean build |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `tree` | 475,744 | 1,960,882 | 75.7% | 2.0 ms | 2.5 ms | 20.0% | 0.48 s | 1.88 s |
+| `dos2unix` | 456,144 | 1,691,074 | 73.0% | 5.5 ms | 6.0 ms | 8.3% | 0.41 s | 1.81 s |
+| `brew-update` | 498,464 | 1,860,898 | 73.2% | 5.5 ms | 7.5 ms | 26.7% | 0.42 s | 1.80 s |
+
+Startup medians were 1.58/2.04 ms, 1.59/2.00 ms, and 1.66/2.08 ms;
+warm medians were 0.01/0.07 s, Rust/Go. Rust was 8–27% faster and 73–76%
+smaller; one discarded Go compile attempt used the wrong checkout and was not
+included in the results.
