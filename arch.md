@@ -84,12 +84,15 @@ delegated Git clone/pull and repository build operations.
 1. Parse the command and discover local repositories, or resolve the owner
    repository list for clone.
 2. Resolve each Origin before operation execution and sort the work by Origin.
-3. Render and flush a colored Repo, Origin, and operation row before starting
-   each repository operation.
-4. Stream child stdout and stderr as flushed indented details without forcing
-   child color, then render one colored indented final status.
-5. Process repositories sequentially, retaining the aggregate failure state.
-6. Return the aggregate operation exit code after all selected repositories
+3. Complete status and pull operations before rendering their colored Repo,
+   Origin, and result rows, followed only by retained uncolored details.
+4. Render and flush build and clone processing rows before starting work.
+5. Stream build and clone stdout and stderr as indented details, then render one
+   colored indented final status.
+6. Inject `GOVERNA_FORCE_TTY=1` only for a color-enabled governed build when
+   the parent environment does not define it; preserve inherited values.
+7. Process repositories sequentially, retaining the aggregate failure state.
+8. Return the aggregate operation exit code after all selected repositories
    have been attempted.
 
 ## Architecture Notes

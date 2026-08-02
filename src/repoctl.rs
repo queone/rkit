@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::thread;
 
 const PROGRAM_NAME: &str = "repoctl";
-pub const PROGRAM_VERSION: &str = "0.2.0";
+pub const PROGRAM_VERSION: &str = "0.3.0";
 const YELLOW: &str = "38;5;226";
 
 /// A command or repository failure with its process exit code.
@@ -182,10 +182,13 @@ enum Operation {
 impl Operation {
     fn action(self) -> &'static str {
         match self {
-            Self::Status => "Checking",
-            Self::Pull => "Pulling",
+            Self::Status | Self::Pull => "",
             Self::Build => "Building",
         }
+    }
+
+    fn streams(self) -> bool {
+        matches!(self, Self::Build)
     }
 }
 
@@ -214,19 +217,25 @@ fn run_local(
 
     let mut failed = false;
     for repo in repos {
-        emit(
-            stdout,
-            stderr,
-            &render_processing(&repo, operation.action(), color, widths),
-        )?;
+        if operation.streams() {
+            emit(
+                stdout,
+                stderr,
+                &render_processing(&repo, operation.action(), color, widths),
+            )?;
+        }
         let result = match operation {
             Operation::Status => Ok(status_repo(repo)),
-            Operation::Pull => pull_repo(repo, stdout, stderr),
-            Operation::Build => build_repo(repo, stdout, stderr),
+            Operation::Pull => Ok(pull_repo(repo)),
+            Operation::Build => build_repo(repo, color, stdout, stderr),
         }?;
         failed |= result.failed;
-        emit_pending_details(stdout, stderr, &result.details)?;
-        emit(stdout, stderr, &render_final_status(&result, color))?;
+        if operation.streams() {
+            emit_pending_details(stdout, stderr, &result.details)?;
+            emit(stdout, stderr, &render_final_status(&result, color))?;
+        } else {
+            emit(stdout, stderr, &render_result(&result, color, widths))?;
+        }
     }
     Ok(if failed { 1 } else { 0 })
 }
@@ -362,48 +371,54 @@ fn status_repo(mut repo: RepoResult) -> RepoResult {
     repo
 }
 
-fn pull_repo(
-    mut repo: RepoResult,
-    stdout: &mut impl Write,
-    stderr: &mut impl Write,
-) -> Result<RepoResult, CliError> {
+fn pull_repo(mut repo: RepoResult) -> RepoResult {
     let remote = command_in_repo(&repo.name, &["ls-remote"]);
     if let Err(error) = remote {
         repo.status = "Remote unavailable".to_owned();
         repo.failed = true;
         repo.details.push(error);
-        return Ok(repo);
+        return repo;
     }
-    let mut command = ProcessCommand::new("git");
-    command.arg("pull").current_dir(&repo.name);
-    match stream_command(&mut command, stdout, stderr, true)? {
-        Ok(output) => {
-            repo.status = if output.routine_pull_only {
+    match ProcessCommand::new("git")
+        .arg("pull")
+        .current_dir(&repo.name)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let text = combined_output(&output);
+            repo.status = if routine_pull_output(&text) {
                 "Already up to date"
             } else {
                 "Pulled"
             }
             .to_owned();
-            if !output.status.success() {
-                repo.status = "Pull failed".to_owned();
-                repo.failed = true;
-                repo.details.push(format!(
-                    "git pull exited with {}; verify the repository and remote before retrying",
-                    output.status
-                ));
+            if repo.status == "Pulled" {
+                append_text_details(&mut repo.details, &text);
             }
+        }
+        Ok(output) => {
+            repo.status = "Pull failed".to_owned();
+            repo.failed = true;
+            append_text_details(&mut repo.details, &combined_output(&output));
+            repo.details.push(format!(
+                "git pull exited with {}; verify the repository and remote before retrying",
+                output.status
+            ));
         }
         Err(error) => {
             repo.status = "Pull failed".to_owned();
             repo.failed = true;
-            repo.details.push(error);
+            repo.details.push(format!(
+                "run git pull: {error}; verify Git and repository permissions before retrying"
+            ));
         }
     }
-    Ok(repo)
+    repo
 }
 
 fn build_repo(
     mut repo: RepoResult,
+    color: ColorMode,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
 ) -> Result<RepoResult, CliError> {
@@ -440,7 +455,12 @@ fn build_repo(
     }
     let mut command = ProcessCommand::new("./build.sh");
     command.current_dir(&repo.name);
-    match stream_command(&mut command, stdout, stderr, false)? {
+    configure_build_color(
+        &mut command,
+        color,
+        std::env::var_os("GOVERNA_FORCE_TTY").as_deref(),
+    );
+    match stream_command(&mut command, stdout, stderr)? {
         Ok(output) if output.status.success() => {
             repo.status = "Built".to_owned();
         }
@@ -487,7 +507,7 @@ fn clone_repo(
     }
     let mut command = ProcessCommand::new("git");
     command.args(["clone", &repo.origin, &repo.name]);
-    match stream_command(&mut command, stdout, stderr, false)? {
+    match stream_command(&mut command, stdout, stderr)? {
         Ok(output) if output.status.success() => {
             repo.status = "Cloned".to_owned();
         }
@@ -617,10 +637,13 @@ fn append_command_details(details: &mut Vec<String>, error: Option<String>) {
     }
 }
 
+fn append_text_details(details: &mut Vec<String>, text: &str) {
+    details.extend(text.lines().map(str::to_owned));
+}
+
 #[derive(Debug)]
 struct StreamOutput {
     status: ExitStatus,
-    routine_pull_only: bool,
 }
 
 enum StreamMessage {
@@ -632,7 +655,6 @@ fn stream_command(
     command: &mut ProcessCommand,
     stdout: &mut impl Write,
     stderr: &mut impl Write,
-    suppress_routine_pull: bool,
 ) -> Result<Result<StreamOutput, String>, CliError> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = match command.spawn() {
@@ -648,9 +670,6 @@ fn stream_command(
     let (sender, receiver) = mpsc::channel();
     let stdout_reader = spawn_stream_reader(child_stdout, sender.clone(), "stdout");
     let stderr_reader = spawn_stream_reader(child_stderr, sender, "stderr");
-    let mut pending_routine = Vec::new();
-    let mut saw_non_routine = false;
-
     for message in receiver {
         let bytes = match message {
             StreamMessage::Line(bytes) => bytes,
@@ -662,22 +681,6 @@ fn stream_command(
         let line = String::from_utf8_lossy(&bytes)
             .trim_end_matches(['\r', '\n'])
             .to_owned();
-        let routine = suppress_routine_pull && routine_pull_line(&line);
-        if routine && !saw_non_routine {
-            pending_routine.push(line);
-            continue;
-        }
-        if !routine {
-            saw_non_routine = true;
-        }
-        if saw_non_routine {
-            for pending in pending_routine.drain(..) {
-                if let Err(error) = emit_detail(stdout, stderr, &pending) {
-                    cleanup_child(&mut child, stdout_reader, stderr_reader);
-                    return Err(error);
-                }
-            }
-        }
         if let Err(error) = emit_detail(stdout, stderr, &line) {
             cleanup_child(&mut child, stdout_reader, stderr_reader);
             return Err(error);
@@ -691,10 +694,7 @@ fn stream_command(
             "wait for child process: {error}; verify process permissions and retry"
         ))
     })?;
-    Ok(Ok(StreamOutput {
-        status,
-        routine_pull_only: suppress_routine_pull && !pending_routine.is_empty() && !saw_non_routine,
-    }))
+    Ok(Ok(StreamOutput { status }))
 }
 
 fn spawn_stream_reader<R: Read + Send + 'static>(
@@ -735,11 +735,30 @@ fn cleanup_child(
     let _ = stderr_reader.join();
 }
 
-fn routine_pull_line(line: &str) -> bool {
+fn routine_pull_output(text: &str) -> bool {
+    let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
     matches!(
-        line.trim(),
-        "Already up to date" | "Already up to date." | "Already up-to-date" | "Already up-to-date."
+        (lines.next(), lines.next()),
+        (
+            Some(
+                "Already up to date"
+                    | "Already up to date."
+                    | "Already up-to-date"
+                    | "Already up-to-date."
+            ),
+            None
+        )
     )
+}
+
+fn configure_build_color(
+    command: &mut ProcessCommand,
+    color: ColorMode,
+    inherited_force_tty: Option<&std::ffi::OsStr>,
+) {
+    if color.enabled() && inherited_force_tty.is_none() {
+        command.env("GOVERNA_FORCE_TTY", "1");
+    }
 }
 
 fn combined_output(output: &Output) -> String {
@@ -797,6 +816,24 @@ fn render_processing(
         " ".repeat(widths.origin - result.origin.chars().count() + 4),
     );
     format!("{}\n", color.paint(YELLOW, &(row + action)))
+}
+
+fn render_result(result: &RepoResult, color: ColorMode, widths: ColumnWidths) -> String {
+    let row = format!(
+        "==> {}{}{}{}{}",
+        result.name,
+        " ".repeat(widths.repo - result.name.chars().count() + 4),
+        result.origin,
+        " ".repeat(widths.origin - result.origin.chars().count() + 4),
+        result.status,
+    );
+    let mut output = format!("{}\n", color.paint(YELLOW, &row));
+    for detail in &result.details {
+        output.push_str("    ");
+        output.push_str(detail);
+        output.push('\n');
+    }
+    output
 }
 
 fn render_final_status(result: &RepoResult, color: ColorMode) -> String {
@@ -871,17 +908,13 @@ mod tests {
             name: "bits".to_owned(),
             origin: "https://github.com/kquo/bits.git".to_owned(),
             status: "👍 main".to_owned(),
-            details: Vec::new(),
+            details: vec!["diagnostic".to_owned()],
             failed: false,
         }];
-        let output = render_processing(
-            &results[0],
-            "Checking",
-            ColorMode::new(true),
-            column_widths(&results),
-        );
+        let output = render_result(&results[0], ColorMode::new(true), column_widths(&results));
         assert!(output.starts_with("\x1b[38;5;226m==> bits"));
-        assert!(output.ends_with("Checking\x1b[0m\n"));
+        assert!(output.contains("👍 main\x1b[0m\n"));
+        assert!(output.ends_with("    diagnostic\n"));
         assert_eq!(
             render_final_status(&results[0], ColorMode::new(true)),
             "\x1b[38;5;226m    👍 main\x1b[0m\n"
@@ -896,7 +929,7 @@ mod tests {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
 
-        let output = stream_command(&mut command, &mut stdout, &mut stderr, false)
+        let output = stream_command(&mut command, &mut stdout, &mut stderr)
             .expect("write output")
             .expect("spawn child");
 
@@ -913,7 +946,7 @@ mod tests {
         let mut stdout = BrokenWriter;
         let mut stderr = Vec::new();
 
-        let error = stream_command(&mut command, &mut stdout, &mut stderr, false)
+        let error = stream_command(&mut command, &mut stdout, &mut stderr)
             .expect_err("broken output must fail");
 
         assert_eq!(error.exit_code(), 1);
@@ -922,5 +955,29 @@ mod tests {
             "write repoctl output: closed fixture; verify standard output is writable and retry"
         );
         assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn build_color_injection_respects_resolved_color_and_inherited_values() {
+        for (color, inherited, expected) in [
+            (true, None, Some("1")),
+            (false, None, None),
+            (true, Some("0"), None),
+            (true, Some("1"), None),
+            (true, Some(""), None),
+        ] {
+            let mut command = ProcessCommand::new("./build.sh");
+            configure_build_color(
+                &mut command,
+                ColorMode::new(color),
+                inherited.map(std::ffi::OsStr::new),
+            );
+            let configured = command
+                .get_envs()
+                .find(|(name, _)| *name == "GOVERNA_FORCE_TTY")
+                .and_then(|(_, value)| value)
+                .and_then(std::ffi::OsStr::to_str);
+            assert_eq!(configured, expected);
+        }
     }
 }

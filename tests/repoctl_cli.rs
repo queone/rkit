@@ -6,6 +6,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 static FIXTURE_NUMBER: AtomicU64 = AtomicU64::new(0);
 
@@ -64,6 +66,7 @@ fn stderr(output: &Output) -> String {
 fn fake_git() -> &'static str {
     r##"#!/bin/sh
 wait_for_release() {
+  [ -n "$REPOCTL_STARTED" ] && : > "$REPOCTL_STARTED"
   while [ ! -e "$REPOCTL_RELEASE" ]; do sleep 0.01; done
 }
 if [ "$1" = "--version" ]; then
@@ -81,6 +84,7 @@ case "$1:$2:$3" in
     ;;
   branch:--show-current:)
     [ "$REPOCTL_WAIT" = "status" ] && wait_for_release
+    [ "$REPOCTL_FAIL_STATUS" = "$repo" ] && { echo "branch failed" >&2; exit 6; }
     echo main
     ;;
   status:--porcelain:) [ "$repo" = "dirty" ] && echo " M file"; exit 0 ;;
@@ -106,6 +110,18 @@ case "$1:$2:$3" in
     ;;
 esac
 "##
+}
+
+fn wait_for_path(path: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !path.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {}",
+            path.display()
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn fake_gh() -> &'static str {
@@ -137,7 +153,7 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     assert!(long.status.success(), "{}", stderr(&long));
     assert_eq!(stdout(&short), stdout(&long));
     let text = stdout(&short);
-    assert_eq!(text.lines().count(), 4);
+    assert_eq!(text.lines().count(), 2);
     assert!(text.starts_with("==> bits"));
     assert!(text.contains("https://github.com/kquo/bits.git"));
     assert!(text.contains("https://github.com/queone/governa.git"));
@@ -146,8 +162,8 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     let bits = text.lines().next().unwrap();
     let origin_start = bits.find("https://").unwrap();
     assert!(bits[..origin_start].ends_with("    "));
-    assert!(bits.ends_with("Checking"));
-    assert!(text.lines().any(|line| line == "    👍 main"));
+    assert!(bits.ends_with("👍 main"));
+    assert!(!text.contains("Checking"));
 }
 
 #[test]
@@ -170,8 +186,33 @@ fn status_reports_clean_dirty_and_missing_origin() {
     assert!(bits.contains("https://github.com/kquo/bits.git"));
     assert!(dirty.contains("<no origin>"));
     assert!(no_origin.contains("<no origin>"));
-    assert_eq!(text.matches("    👍 main\n").count(), 2);
-    assert_eq!(text.matches("    ❌ main\n").count(), 1);
+    assert_eq!(text.lines().count(), 3);
+    assert_eq!(text.matches("👍 main").count(), 2);
+    assert_eq!(text.matches("❌ main").count(), 1);
+    assert!(!text.lines().any(|line| line.starts_with("    ")));
+}
+
+#[test]
+fn status_failure_uses_final_row_then_uncolored_detail() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["s", "bits"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_FAIL_STATUS", "bits")
+        .output()
+        .expect("run failed status");
+    assert_eq!(output.status.code(), Some(1));
+    let text = stdout(&output);
+    let mut lines = text.lines();
+    assert!(lines.next().unwrap().ends_with("Status failed"));
+    assert!(lines.next().unwrap().starts_with("    git branch"));
+    assert!(!text.contains("Checking"));
+    assert!(!text.contains('\x1b'));
 }
 
 #[test]
@@ -192,6 +233,7 @@ fn pull_prints_summary_and_details_and_returns_failure_after_continuing() {
     assert_eq!(output.status.code(), Some(1));
     let text = stdout(&output);
     assert_eq!(text.matches("Already up to date").count(), 1);
+    assert!(!text.contains("Pulling"));
     assert!(text.contains("Pull failed"));
     assert!(text.contains("pull failed"));
     assert!(text.contains("bits") && text.contains("governa"));
@@ -212,6 +254,41 @@ fn pull_subset_excludes_unselected_repositories() {
 }
 
 #[test]
+fn pull_buffers_output_until_final_primary_row() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+    let release = fixture.path.join("release-pull");
+    let started = fixture.path.join("started-pull");
+    let captured = fixture.path.join("pull-output");
+    let output_file = fs::File::create(&captured).expect("create output capture");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["p", "bits"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_WAIT", "pull")
+        .env("REPOCTL_RELEASE", &release)
+        .env("REPOCTL_STARTED", &started)
+        .stdout(output_file)
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn buffered pull");
+    wait_for_path(&started);
+    assert_eq!(fs::metadata(&captured).unwrap().len(), 0);
+    fs::write(&release, "release").expect("release pull");
+    assert!(child.wait().expect("wait for pull").success());
+
+    let text = fs::read_to_string(captured).expect("read pull output");
+    let mut lines = text.lines();
+    assert!(lines.next().unwrap().ends_with("Pulled"));
+    assert!(lines.any(|line| line == "    pull-stdout"));
+    assert!(text.contains("    pull-stderr"));
+    assert!(!text.contains("Pulling"));
+}
+
+#[test]
 fn processing_rows_precede_work_and_child_details_stream_live() {
     let fixture = Fixture::new();
     fixture.repo("bits");
@@ -221,20 +298,17 @@ fn processing_rows_precede_work_and_child_details_stream_live() {
         "#!/bin/sh\necho build-stdout\necho build-stderr >&2\nwhile [ ! -e \"$REPOCTL_RELEASE\" ]; do sleep 0.01; done\n",
     );
 
-    for (command, action, streamed) in [
-        (vec!["s", "bits"], "Checking", None),
-        (vec!["p", "bits"], "Pulling", Some("pull")),
-        (vec!["b", "bits"], "Building", Some("build")),
-        (vec!["c", "kquo", "newrepo"], "Cloning", Some("clone")),
+    for (command, action, prefix) in [
+        (vec!["b", "bits"], "Building", "build"),
+        (vec!["c", "kquo", "newrepo"], "Cloning", "clone"),
     ] {
         let release = fixture.path.join(format!("release-{action}"));
-        let wait_kind = streamed.unwrap_or("status");
         let mut child = Command::new(env!("CARGO_BIN_EXE_repoctl"))
             .args(&command)
             .current_dir(&fixture.path)
             .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
             .env("NO_COLOR", "1")
-            .env("REPOCTL_WAIT", wait_kind)
+            .env("REPOCTL_WAIT", prefix)
             .env("REPOCTL_RELEASE", &release)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -247,23 +321,21 @@ fn processing_rows_precede_work_and_child_details_stream_live() {
         assert!(row.starts_with("==> ") && row.contains(action), "{row}");
         assert!(child.try_wait().expect("check repoctl state").is_none());
 
-        if let Some(prefix) = streamed {
-            let mut details = String::new();
-            for _ in 0..2 {
-                let mut line = String::new();
-                reader.read_line(&mut line).expect("read streamed detail");
-                details.push_str(&line);
-            }
-            assert!(
-                details.contains(&format!("    {prefix}-stdout")),
-                "{details}"
-            );
-            assert!(
-                details.contains(&format!("    {prefix}-stderr")),
-                "{details}"
-            );
-            assert!(child.try_wait().expect("check streamed child").is_none());
+        let mut details = String::new();
+        for _ in 0..2 {
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("read streamed detail");
+            details.push_str(&line);
         }
+        assert!(
+            details.contains(&format!("    {prefix}-stdout")),
+            "{details}"
+        );
+        assert!(
+            details.contains(&format!("    {prefix}-stderr")),
+            "{details}"
+        );
+        assert!(child.try_wait().expect("check streamed child").is_none());
 
         fs::write(&release, "release").expect("release fixture command");
         let mut remainder = String::new();
@@ -273,6 +345,59 @@ fn processing_rows_precede_work_and_child_details_stream_live() {
         let status = child.wait().expect("wait for repoctl");
         assert!(status.success(), "{remainder}");
     }
+}
+
+#[test]
+fn build_preserves_force_tty_and_indents_child_ansi() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+    fixture.script(
+        "bits/build.sh",
+        "#!/bin/sh\nprintf 'force=%s\\n' \"${GOVERNA_FORCE_TTY-unset}\"\nif [ \"${GOVERNA_FORCE_TTY:-0}\" = 1 ]; then printf '\\033[31mcolored\\033[0m\\n'; else printf 'plain\\n'; fi\n",
+    );
+
+    for inherited in [Some("0"), Some("1"), Some(""), None] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_repoctl"));
+        command
+            .args(["b", "bits"])
+            .current_dir(&fixture.path)
+            .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+            .env("NO_COLOR", "1");
+        match inherited {
+            Some(value) => {
+                command.env("GOVERNA_FORCE_TTY", value);
+            }
+            None => {
+                command.env_remove("GOVERNA_FORCE_TTY");
+            }
+        }
+        let output = command.output().expect("run build environment fixture");
+        assert!(output.status.success(), "{}", stderr(&output));
+        let text = stdout(&output);
+        assert!(text.contains(&format!("    force={}", inherited.unwrap_or("unset"))));
+        if inherited == Some("1") {
+            assert!(text.contains("    \x1b[31mcolored\x1b[0m"));
+        } else {
+            assert!(text.contains("    plain"));
+            assert!(!text.contains('\x1b'));
+        }
+    }
+}
+
+#[test]
+fn documentation_matches_repoctl_result_and_streaming_lifecycles() {
+    let readme = include_str!("../README.md");
+    let architecture = include_str!("../arch.md");
+
+    for text in [readme, architecture] {
+        assert!(text.contains("status") && text.contains("pull"));
+        assert!(text.contains("build") && text.contains("clone"));
+        assert!(text.contains("GOVERNA_FORCE_TTY"));
+    }
+    assert!(readme.contains("repoctl 0.3.0"));
+    assert!(readme.contains("completed") && readme.contains("live processing row"));
+    assert!(architecture.contains("Complete status and pull operations"));
 }
 
 #[test]
@@ -424,7 +549,7 @@ fn help_and_version_are_terminal_commands() {
     let fixture = Fixture::new();
     let version = fixture.command(&["--version"]);
     assert!(version.status.success());
-    assert_eq!(stdout(&version), "repoctl 0.2.0\n");
+    assert_eq!(stdout(&version), "repoctl 0.3.0\n");
     assert!(stderr(&version).is_empty());
 
     let help = fixture.command(&["--help"]);

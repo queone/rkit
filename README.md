@@ -184,7 +184,7 @@ before retrying.
 ## repoctl
 
 ```text
-repoctl 0.2.0
+repoctl 0.3.0
 Control a collection of local Git repositories.
 ```
 
@@ -198,11 +198,12 @@ repoctl c, clone OWNER [REPO ...]  Clone all or selected owner repositories
 repoctl b, build [REPO ...]         Run ./build.sh in repositories
 ```
 
-Every command first flushes one unheaded processing row per applicable
-repository. Rows contain Repo, Origin, and the selected operation, sorted by
-Origin. Git and build output streams live as indented detail, followed by one
-indented final status. The complete processing and final-status lines are
-yellow in a compatible terminal; redirected output is plain.
+`status` and `pull` print one completed, unheaded result row per applicable
+repository. `build` and `clone` first flush a live processing row, stream
+indented details, and finish with one indented final status. Rows contain Repo,
+Origin, and the selected result or operation, sorted by Origin. Complete result,
+processing, and final-status lines are yellow in a compatible terminal;
+redirected output is plain.
 The aligned Repo and Origin columns use four literal separator spaces.
 `repoctl` resolves Origins, sorts the work, and processes repositories
 sequentially. It completes each repository before starting the next.
@@ -215,6 +216,13 @@ tree. `pull` reports `Remote unavailable`, `Pulled`, `Already up to date`, or
 name discovered local repositories. A failed per-repository operation leaves
 the remaining repositories running and makes `repoctl` exit non-zero.
 Routine pull output that only repeats `Already up to date` is suppressed.
+Other status and pull diagnostics appear as uncolored indented details beneath
+the completed result row.
+
+When terminal color is enabled, `build` passes `GOVERNA_FORCE_TTY=1` to a
+governed child build only when the variable is absent. This preserves the
+child's normal colorized output while `repoctl` streams and indents it. An
+inherited value is preserved, and disabled-color execution does not inject one.
 
 `clone` uses `gh repo list OWNER --json name --jq .[].name` when no repository
 names are supplied and clones from `https://github.com/OWNER/REPO.git`. It
