@@ -7,11 +7,13 @@ behavior and no third-party runtime dependencies.
 
 ## System Summary
 
-The root Cargo package builds the `tree` and `dos2unix` binaries. Each binary
+The root Cargo package builds the `tree`, `dos2unix`, `brew-update`, and
+`repoctl` binaries. Each binary
 keeps process streams and exit codes at its entrypoint and delegates testable
 behavior to a namespaced `rkit` library module. The package reads the local
-filesystem and writes only to requested regular files, standard output, and
-standard error.
+filesystem and writes to standard output and standard error; file mutation is
+limited to utilities that explicitly request it, including `repoctl`'s
+delegated Git clone/pull and repository build operations.
 
 ## Current Platform
 
@@ -21,12 +23,15 @@ standard error.
 
 - `src/bin/tree.rs`: `tree` process streams and exit-code boundary
 - `src/bin/dos2unix.rs`: `dos2unix` process streams and exit-code boundary
+- `src/bin/repoctl.rs`: `repoctl` process streams and exit-code boundary
 - `src/tree.rs`: tree parsing, traversal, path handling, and rendering
 - `src/dos2unix.rs`: CRLF parsing, preview, conversion, and diagnostics
+- `src/repoctl.rs`: repository discovery, operation execution, sorting, rendering, and diagnostics
 - `src/color.rs`: shared terminal color policy
 - `src/lib.rs`: narrow package-binary library boundary
 - `tests/tree_cli.rs`: compiled `tree` behavior coverage
 - `tests/dos2unix_cli.rs`: compiled `dos2unix` behavior and file-effect coverage
+- `tests/repoctl_cli.rs`: `repoctl` command, operation, sorting, and output coverage
 - `tests/build_cli.sh`: build routing and release-safety coverage
 - `build.sh`: isolated Cargo validation and package-binary installation
 
@@ -40,9 +45,11 @@ standard error.
 - `src/bin/`: process entrypoints
 - `src/tree.rs`: reusable `tree` behavior
 - `src/dos2unix.rs`: reusable `dos2unix` behavior
+- `src/repoctl.rs`: reusable `repoctl` behavior
 - `src/color.rs`: shared terminal color detection and rendering
 - `tests/tree_cli.rs`: end-to-end `tree` tests
 - `tests/dos2unix_cli.rs`: end-to-end `dos2unix` tests
+- `tests/repoctl_cli.rs`: end-to-end `repoctl` tests
 - `tests/build_cli.sh`: Bash 3.2-compatible build and release routing tests
 - `governa/development-cycle.md`: workflow from roadmap through release
 - `governa/ac-template.md`: acceptance-criteria template for new work

@@ -1,6 +1,6 @@
 [package]
 name = "rkit"
-version = "1.5.3"
+version = "1.6.0"
 edition = "2024"
 
 [lib]
@@ -17,3 +17,7 @@ path = "src/bin/dos2unix.rs"
 [[bin]]
 name = "brew-update"
 path = "src/bin/brew-update.rs"
+
+[[bin]]
+name = "repoctl"
+path = "src/bin/repoctl.rs"

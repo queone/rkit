@@ -1,0 +1,343 @@
+#![cfg(unix)]
+
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
+use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static FIXTURE_NUMBER: AtomicU64 = AtomicU64::new(0);
+
+struct Fixture {
+    path: PathBuf,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        let number = FIXTURE_NUMBER.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("rkit-repoctl-{}-{number}", std::process::id()));
+        fs::create_dir(&path).expect("create fixture directory");
+        Self { path }
+    }
+
+    fn repo(&self, name: &str) {
+        fs::create_dir_all(self.path.join(name).join(".git")).expect("create git fixture");
+    }
+
+    fn script(&self, name: &str, body: &str) {
+        let path = self.path.join(name);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create fixture script parent");
+        }
+        fs::write(&path, body).expect("write fixture script");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+            .expect("make fixture script executable");
+    }
+
+    fn command(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_repoctl"))
+            .args(args)
+            .current_dir(&self.path)
+            .env("PATH", format!("{}:/usr/bin:/bin", self.path.display()))
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("run repoctl")
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn stdout(output: &Output) -> String {
+    String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8(output.stderr.clone()).expect("stderr is UTF-8")
+}
+
+fn fake_git() -> &'static str {
+    r##"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "git fixture"
+  exit 0
+fi
+repo=${PWD##*/}
+case "$1:$2:$3" in
+  remote:get-url:origin)
+    case "$repo" in
+      bits) echo "https://github.com/kquo/bits.git" ;;
+      governa) echo "https://github.com/queone/governa.git" ;;
+      no-origin) exit 1 ;;
+    esac
+    ;;
+  branch:--show-current:) echo main ;;
+  status:--porcelain:) [ "$repo" = "dirty" ] && echo " M file"; exit 0 ;;
+  ls-remote::) [ "$REPOCTL_FAIL_REMOTE" = "$repo" ] && { echo "remote failed" >&2; exit 7; }; exit 0 ;;
+  pull::) [ "$REPOCTL_FAIL_PULL" = "$repo" ] && { echo "pull failed" >&2; exit 8; }; echo "Already up to date" ;;
+  clone:*)
+    [ "$REPOCTL_FAIL_CLONE" = "$3" ] && { echo "clone failed" >&2; exit 9; }
+    mkdir -p "$3/.git"
+    echo "cloned $2"
+    ;;
+esac
+"##
+}
+
+fn fake_gh() -> &'static str {
+    r##"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "gh fixture"
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "list" ]; then
+  echo governa
+  echo bits
+  exit 0
+fi
+echo "unexpected gh arguments: $*" >&2
+exit 9
+"##
+}
+
+#[test]
+fn status_aliases_sort_complete_origin_and_omit_headers() {
+    let fixture = Fixture::new();
+    fixture.repo("governa");
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+
+    let short = fixture.command(&["s"]);
+    let long = fixture.command(&["status"]);
+    assert!(short.status.success(), "{}", stderr(&short));
+    assert!(long.status.success(), "{}", stderr(&long));
+    assert_eq!(stdout(&short), stdout(&long));
+    let text = stdout(&short);
+    assert_eq!(text.lines().count(), 2);
+    assert!(text.starts_with("==> bits"));
+    assert!(text.contains("https://github.com/kquo/bits.git"));
+    assert!(text.contains("https://github.com/queone/governa.git"));
+    assert!(!text.contains("Repo"));
+    assert!(!text.contains('\x1b'));
+}
+
+#[test]
+fn status_reports_clean_dirty_and_missing_origin() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.repo("dirty");
+    fixture.repo("no-origin");
+    fixture.script("git", fake_git());
+
+    let output = fixture.command(&["status"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    let bits = text.lines().find(|line| line.contains("bits")).unwrap();
+    let dirty = text.lines().find(|line| line.contains("dirty")).unwrap();
+    let no_origin = text
+        .lines()
+        .find(|line| line.contains("no-origin"))
+        .unwrap();
+    assert!(bits.contains("https://github.com/kquo/bits.git"));
+    assert!(bits.contains("👍 main"));
+    assert!(dirty.contains("<no origin>") && dirty.contains("❌ main"));
+    assert!(no_origin.contains("<no origin>") && no_origin.contains("👍 main"));
+}
+
+#[test]
+fn pull_prints_summary_and_details_and_returns_failure_after_continuing() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.repo("governa");
+    fixture.script("git", fake_git());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["p"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_FAIL_PULL", "governa")
+        .output()
+        .expect("run repoctl pull");
+    assert_eq!(output.status.code(), Some(1));
+    let text = stdout(&output);
+    assert!(text.contains("Already up to date"));
+    assert!(text.contains("Pull failed"));
+    assert!(text.contains("pull failed"));
+    assert!(text.contains("bits") && text.contains("governa"));
+}
+
+#[test]
+fn pull_subset_excludes_unselected_repositories() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.repo("governa");
+    fixture.script("git", fake_git());
+
+    let output = fixture.command(&["pull", "bits"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("bits"));
+    assert!(!text.contains("governa"));
+}
+
+#[test]
+fn operation_failure_summaries_cover_remote_build_and_clone() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh());
+
+    let remote = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["p", "bits"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_FAIL_REMOTE", "bits")
+        .output()
+        .expect("run remote failure");
+    assert_eq!(remote.status.code(), Some(1));
+    assert!(stdout(&remote).contains("Remote unavailable"));
+
+    fixture.script(
+        "bits/build.sh",
+        "#!/bin/sh\necho build failed >&2\nexit 7\n",
+    );
+    fs::set_permissions(
+        fixture.path.join("bits/build.sh"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .expect("make failing build script executable");
+    let build = fixture.command(&["b", "bits"]);
+    assert_eq!(build.status.code(), Some(1));
+    assert!(stdout(&build).contains("Build failed"));
+    assert!(stdout(&build).contains("build failed"));
+
+    let clone = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["c", "queone", "newrepo"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_FAIL_CLONE", "newrepo")
+        .output()
+        .expect("run clone failure");
+    assert_eq!(clone.status.code(), Some(1));
+    assert!(stdout(&clone).contains("Clone failed"));
+    assert!(stdout(&clone).contains("clone failed"));
+}
+
+#[test]
+fn build_runs_only_requested_subset_and_reports_missing_script() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.repo("governa");
+    fixture.script("git", fake_git());
+    fixture.script("bits/build.sh", "#!/bin/sh\necho build-details\n");
+    fs::set_permissions(
+        fixture.path.join("bits/build.sh"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .expect("make build script executable");
+
+    let output = fixture.command(&["b", "bits"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("bits"));
+    assert!(text.contains("Built"));
+    assert!(text.contains("    build-details"));
+    assert!(!text.contains("governa"));
+
+    let output = fixture.command(&["build"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stdout(&output).contains("No build.sh"));
+}
+
+#[test]
+fn clone_explicit_subset_sorts_origins_and_skips_existing_destination() {
+    let fixture = Fixture::new();
+    fixture.repo("existing");
+    fixture.script("git", fake_git());
+
+    let output = fixture.command(&["c", "kquo", "zeta", "existing"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/kquo/existing.git"));
+    assert!(text.contains("https://github.com/kquo/zeta.git"));
+    assert!(text.contains("Skipped"));
+    assert!(text.contains("Cloned"));
+    assert!(fixture.path.join("zeta/.git").is_dir());
+}
+
+#[test]
+fn clone_without_subset_reads_repository_names_from_gh() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh());
+
+    let output = fixture.command(&["clone", "queone"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/queone/bits.git"));
+    assert!(text.contains("https://github.com/queone/governa.git"));
+    assert!(fixture.path.join("bits/.git").is_dir());
+    assert!(fixture.path.join("governa/.git").is_dir());
+}
+
+#[test]
+fn unknown_subset_is_rejected_before_operation() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.script("git", fake_git());
+
+    let output = fixture.command(&["s", "missing"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    assert!(stderr(&output).contains("no matching immediate Git repository"));
+}
+
+#[test]
+fn missing_provider_commands_and_invalid_clone_operands_have_recovery_guidance() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+
+    let missing_git = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["s"])
+        .current_dir(&fixture.path)
+        .env("PATH", &fixture.path)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run repoctl without git");
+    assert_eq!(missing_git.status.code(), Some(1));
+    assert!(stderr(&missing_git).contains("install Git"));
+
+    let missing_gh = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["clone", "queone"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run repoctl without gh");
+    assert_eq!(missing_gh.status.code(), Some(1));
+    assert!(stderr(&missing_gh).contains("GitHub CLI"));
+
+    let invalid_clone = fixture.command(&["clone"]);
+    assert_eq!(invalid_clone.status.code(), Some(2));
+    assert!(stderr(&invalid_clone).contains("expected OWNER"));
+}
+
+#[test]
+fn help_and_version_are_terminal_commands() {
+    let fixture = Fixture::new();
+    let version = fixture.command(&["--version"]);
+    assert!(version.status.success());
+    assert_eq!(stdout(&version), "repoctl 0.1.0\n");
+    assert!(stderr(&version).is_empty());
+
+    let help = fixture.command(&["--help"]);
+    assert!(help.status.success());
+    assert!(stdout(&help).contains("s, status"));
+}

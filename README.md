@@ -2,8 +2,8 @@
 
 `rkit` provides small, standalone Rust command-line utilities. It currently
 includes `tree` for directory hierarchies, `dos2unix` for previewing or
-converting CRLF line endings, and `brew-update` for maintaining Homebrew
-packages on macOS.
+converting CRLF line endings, `brew-update` for maintaining Homebrew packages
+on macOS, and `repoctl` for operating on collections of local Git repositories.
 
 ## Why
 
@@ -57,6 +57,7 @@ those binaries:
 ./build.sh tree
 ./build.sh dos2unix
 ./build.sh tree dos2unix
+./build.sh repoctl
 ```
 
 A scoped build still formats the package and validates the shared library used
@@ -179,6 +180,41 @@ running Homebrew. All other arguments are accepted for compatibility and do
 not change the workflow. If Homebrew is missing or a command fails, the
 diagnostic identifies the operation and advises verifying Homebrew and `PATH`
 before retrying.
+
+## repoctl
+
+```text
+repoctl 0.1.0
+Control a collection of local Git repositories.
+```
+
+`repoctl` discovers immediate, non-hidden subdirectories containing a `.git`
+directory. Its short commands and long aliases are:
+
+```text
+repoctl s, status [REPO ...]        Show status
+repoctl p, pull [REPO ...]          Pull repositories
+repoctl c, clone OWNER [REPO ...]  Clone all or selected owner repositories
+repoctl b, build [REPO ...]         Run ./build.sh in repositories
+```
+
+Every command prints one unheaded row per applicable repository. Rows contain
+Repo, Origin, and the selected operation's Status, sorted by Origin. Extended
+Git or build output appears as indented detail beneath its row. The three row
+values are yellow in a compatible terminal; redirected output is plain.
+
+`status` reports `👍 <branch>` for a clean tree and `❌ <branch>` for a dirty
+tree. `pull` reports `Remote unavailable`, `Pulled`, `Already up to date`, or
+`Pull failed`; `clone` reports `Cloned`, `Skipped`, or `Clone failed`; and
+`build` runs an executable `./build.sh` from each repository root and reports
+`Built`, `No build.sh`, or `Build failed`. A requested repository subset must
+name discovered local repositories. A failed per-repository operation leaves
+the remaining repositories running and makes `repoctl` exit non-zero.
+
+`clone` uses `gh repo list OWNER --json name --jq .[].name` when no repository
+names are supplied and clones from `https://github.com/OWNER/REPO.git`. It
+requires both Git and GitHub CLI for owner-wide listing; explicit repository
+names require Git only.
 
 ## Governance
 
