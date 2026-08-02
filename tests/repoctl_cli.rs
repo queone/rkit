@@ -63,6 +63,9 @@ fn stderr(output: &Output) -> String {
 
 fn fake_git() -> &'static str {
     r##"#!/bin/sh
+wait_for_release() {
+  while [ ! -e "$REPOCTL_RELEASE" ]; do sleep 0.01; done
+}
 if [ "$1" = "--version" ]; then
   echo "git fixture"
   exit 0
@@ -76,15 +79,27 @@ case "$1:$2:$3" in
       no-origin) exit 1 ;;
     esac
     ;;
-  branch:--show-current:) echo main ;;
+  branch:--show-current:)
+    [ "$REPOCTL_WAIT" = "status" ] && wait_for_release
+    echo main
+    ;;
   status:--porcelain:) [ "$repo" = "dirty" ] && echo " M file"; exit 0 ;;
   ls-remote::) [ "$REPOCTL_FAIL_REMOTE" = "$repo" ] && { echo "remote failed" >&2; exit 7; }; exit 0 ;;
   pull::)
-    [ "$REPOCTL_DELAY_PULL" = "$repo" ] && sleep 2
+    if [ "$REPOCTL_WAIT" = "pull" ]; then
+      echo "pull-stdout"
+      echo "pull-stderr" >&2
+      wait_for_release
+    fi
     [ "$REPOCTL_FAIL_PULL" = "$repo" ] && { echo "pull failed" >&2; exit 8; }
-    echo "Already up to date"
+    echo "Already up to date."
     ;;
   clone:*)
+    if [ "$REPOCTL_WAIT" = "clone" ]; then
+      echo "clone-stdout"
+      echo "clone-stderr" >&2
+      wait_for_release
+    fi
     [ "$REPOCTL_FAIL_CLONE" = "$3" ] && { echo "clone failed" >&2; exit 9; }
     mkdir -p "$3/.git"
     echo "cloned $2"
@@ -122,7 +137,7 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     assert!(long.status.success(), "{}", stderr(&long));
     assert_eq!(stdout(&short), stdout(&long));
     let text = stdout(&short);
-    assert_eq!(text.lines().count(), 2);
+    assert_eq!(text.lines().count(), 4);
     assert!(text.starts_with("==> bits"));
     assert!(text.contains("https://github.com/kquo/bits.git"));
     assert!(text.contains("https://github.com/queone/governa.git"));
@@ -131,8 +146,8 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     let bits = text.lines().next().unwrap();
     let origin_start = bits.find("https://").unwrap();
     assert!(bits[..origin_start].ends_with("    "));
-    let status_start = bits.find("👍 main").unwrap();
-    assert!(bits[..status_start].ends_with("    "));
+    assert!(bits.ends_with("Checking"));
+    assert!(text.lines().any(|line| line == "    👍 main"));
 }
 
 #[test]
@@ -153,9 +168,10 @@ fn status_reports_clean_dirty_and_missing_origin() {
         .find(|line| line.contains("no-origin"))
         .unwrap();
     assert!(bits.contains("https://github.com/kquo/bits.git"));
-    assert!(bits.contains("👍 main"));
-    assert!(dirty.contains("<no origin>") && dirty.contains("❌ main"));
-    assert!(no_origin.contains("<no origin>") && no_origin.contains("👍 main"));
+    assert!(dirty.contains("<no origin>"));
+    assert!(no_origin.contains("<no origin>"));
+    assert_eq!(text.matches("    👍 main\n").count(), 2);
+    assert_eq!(text.matches("    ❌ main\n").count(), 1);
 }
 
 #[test]
@@ -175,7 +191,7 @@ fn pull_prints_summary_and_details_and_returns_failure_after_continuing() {
         .expect("run repoctl pull");
     assert_eq!(output.status.code(), Some(1));
     let text = stdout(&output);
-    assert!(text.contains("Already up to date"));
+    assert_eq!(text.matches("Already up to date").count(), 1);
     assert!(text.contains("Pull failed"));
     assert!(text.contains("pull failed"));
     assert!(text.contains("bits") && text.contains("governa"));
@@ -196,41 +212,67 @@ fn pull_subset_excludes_unselected_repositories() {
 }
 
 #[test]
-fn pull_flushes_each_completed_row_before_a_later_repository_finishes() {
+fn processing_rows_precede_work_and_child_details_stream_live() {
     let fixture = Fixture::new();
     fixture.repo("bits");
-    fixture.repo("governa");
     fixture.script("git", fake_git());
+    fixture.script(
+        "bits/build.sh",
+        "#!/bin/sh\necho build-stdout\necho build-stderr >&2\nwhile [ ! -e \"$REPOCTL_RELEASE\" ]; do sleep 0.01; done\n",
+    );
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_repoctl"))
-        .args(["p"])
-        .current_dir(&fixture.path)
-        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
-        .env("NO_COLOR", "1")
-        .env("REPOCTL_DELAY_PULL", "governa")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn repoctl pull");
-    let stdout = child.stdout.take().expect("capture repoctl stdout");
-    let mut reader = BufReader::new(stdout);
-    let mut first_line = String::new();
-    reader.read_line(&mut first_line).expect("read first row");
-    assert!(first_line.starts_with("==> bits"), "{first_line}");
-    let mut first_detail = String::new();
-    reader
-        .read_line(&mut first_detail)
-        .expect("read first detail");
-    assert!(first_detail.contains("Already up to date"));
-    assert!(child.try_wait().expect("check repoctl state").is_none());
+    for (command, action, streamed) in [
+        (vec!["s", "bits"], "Checking", None),
+        (vec!["p", "bits"], "Pulling", Some("pull")),
+        (vec!["b", "bits"], "Building", Some("build")),
+        (vec!["c", "kquo", "newrepo"], "Cloning", Some("clone")),
+    ] {
+        let release = fixture.path.join(format!("release-{action}"));
+        let wait_kind = streamed.unwrap_or("status");
+        let mut child = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+            .args(&command)
+            .current_dir(&fixture.path)
+            .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+            .env("NO_COLOR", "1")
+            .env("REPOCTL_WAIT", wait_kind)
+            .env("REPOCTL_RELEASE", &release)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn repoctl");
+        let stdout = child.stdout.take().expect("capture repoctl stdout");
+        let mut reader = BufReader::new(stdout);
+        let mut row = String::new();
+        reader.read_line(&mut row).expect("read processing row");
+        assert!(row.starts_with("==> ") && row.contains(action), "{row}");
+        assert!(child.try_wait().expect("check repoctl state").is_none());
 
-    let mut remainder = String::new();
-    reader
-        .read_to_string(&mut remainder)
-        .expect("read remaining output");
-    let status = child.wait().expect("wait for repoctl pull");
-    assert!(status.success());
-    assert!(remainder.contains("governa"));
+        if let Some(prefix) = streamed {
+            let mut details = String::new();
+            for _ in 0..2 {
+                let mut line = String::new();
+                reader.read_line(&mut line).expect("read streamed detail");
+                details.push_str(&line);
+            }
+            assert!(
+                details.contains(&format!("    {prefix}-stdout")),
+                "{details}"
+            );
+            assert!(
+                details.contains(&format!("    {prefix}-stderr")),
+                "{details}"
+            );
+            assert!(child.try_wait().expect("check streamed child").is_none());
+        }
+
+        fs::write(&release, "release").expect("release fixture command");
+        let mut remainder = String::new();
+        reader
+            .read_to_string(&mut remainder)
+            .expect("read remainder");
+        let status = child.wait().expect("wait for repoctl");
+        assert!(status.success(), "{remainder}");
+    }
 }
 
 #[test]
@@ -382,7 +424,7 @@ fn help_and_version_are_terminal_commands() {
     let fixture = Fixture::new();
     let version = fixture.command(&["--version"]);
     assert!(version.status.success());
-    assert_eq!(stdout(&version), "repoctl 0.1.0\n");
+    assert_eq!(stdout(&version), "repoctl 0.2.0\n");
     assert!(stderr(&version).is_empty());
 
     let help = fixture.command(&["--help"]);

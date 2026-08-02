@@ -84,10 +84,12 @@ delegated Git clone/pull and repository build operations.
 1. Parse the command and discover local repositories, or resolve the owner
    repository list for clone.
 2. Resolve each Origin before operation execution and sort the work by Origin.
-3. Process repositories sequentially, retaining the aggregate failure state.
-4. Render and flush each completed Repo, Origin, and Status row with its
-   indented details before starting the next repository.
-5. Return the aggregate operation exit code after all selected repositories
+3. Render and flush a colored Repo, Origin, and operation row before starting
+   each repository operation.
+4. Stream child stdout and stderr as flushed indented details without forcing
+   child color, then render one colored indented final status.
+5. Process repositories sequentially, retaining the aggregate failure state.
+6. Return the aggregate operation exit code after all selected repositories
    have been attempted.
 
 ## Architecture Notes

@@ -184,7 +184,7 @@ before retrying.
 ## repoctl
 
 ```text
-repoctl 0.1.0
+repoctl 0.2.0
 Control a collection of local Git repositories.
 ```
 
@@ -198,13 +198,14 @@ repoctl c, clone OWNER [REPO ...]  Clone all or selected owner repositories
 repoctl b, build [REPO ...]         Run ./build.sh in repositories
 ```
 
-Every command prints one unheaded row per applicable repository. Rows contain
-Repo, Origin, and the selected operation's Status, sorted by Origin. Extended
-Git or build output appears as indented detail beneath its row. The three row
-values are yellow in a compatible terminal; redirected output is plain.
+Every command first flushes one unheaded processing row per applicable
+repository. Rows contain Repo, Origin, and the selected operation, sorted by
+Origin. Git and build output streams live as indented detail, followed by one
+indented final status. The complete processing and final-status lines are
+yellow in a compatible terminal; redirected output is plain.
 The aligned Repo and Origin columns use four literal separator spaces.
 `repoctl` resolves Origins, sorts the work, and processes repositories
-sequentially; each completed row and its details are flushed immediately.
+sequentially. It completes each repository before starting the next.
 
 `status` reports `👍 <branch>` for a clean tree and `❌ <branch>` for a dirty
 tree. `pull` reports `Remote unavailable`, `Pulled`, `Already up to date`, or
@@ -213,6 +214,7 @@ tree. `pull` reports `Remote unavailable`, `Pulled`, `Already up to date`, or
 `Built`, `No build.sh`, or `Build failed`. A requested repository subset must
 name discovered local repositories. A failed per-repository operation leaves
 the remaining repositories running and makes `repoctl` exit non-zero.
+Routine pull output that only repeats `Already up to date` is suppressed.
 
 `clone` uses `gh repo list OWNER --json name --jq .[].name` when no repository
 names are supplied and clones from `https://github.com/OWNER/REPO.git`. It
