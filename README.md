@@ -202,6 +202,9 @@ Every command prints one unheaded row per applicable repository. Rows contain
 Repo, Origin, and the selected operation's Status, sorted by Origin. Extended
 Git or build output appears as indented detail beneath its row. The three row
 values are yellow in a compatible terminal; redirected output is plain.
+The aligned Repo and Origin columns use four literal separator spaces.
+`repoctl` resolves Origins, sorts the work, and processes repositories
+sequentially; each completed row and its details are flushed immediately.
 
 `status` reports `👍 <branch>` for a clean tree and `❌ <branch>` for a dirty
 tree. `pull` reports `Remote unavailable`, `Pulled`, `Already up to date`, or

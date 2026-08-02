@@ -3,7 +3,7 @@
 use crate::color::ColorMode;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Output};
 
@@ -44,39 +44,6 @@ impl CliError {
     }
 }
 
-/// Complete output from a repository operation.
-#[derive(Debug, Eq, PartialEq)]
-pub struct RunOutput {
-    stdout: String,
-    stderr: String,
-    exit_code: u8,
-}
-
-impl RunOutput {
-    fn new(stdout: String, stderr: String, exit_code: u8) -> Self {
-        Self {
-            stdout,
-            stderr,
-            exit_code,
-        }
-    }
-
-    /// Returns the summary and indented operation details.
-    pub fn stdout(&self) -> &str {
-        &self.stdout
-    }
-
-    /// Returns non-fatal diagnostics.
-    pub fn stderr(&self) -> &str {
-        &self.stderr
-    }
-
-    /// Returns the aggregate operation exit code.
-    pub fn exit_code(&self) -> u8 {
-        self.exit_code
-    }
-}
-
 #[derive(Debug, Eq, PartialEq)]
 enum Command {
     Help,
@@ -97,31 +64,46 @@ struct RepoResult {
 }
 
 /// Runs `repoctl` for the provided arguments in the current directory.
-pub fn run<I, S>(args: I) -> Result<RunOutput, CliError>
+pub fn run<I, S, W, E>(args: I, stdout: &mut W, stderr: &mut E) -> Result<u8, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
+    W: Write,
+    E: Write,
 {
-    run_with(args, ColorMode::detect_stdout())
+    run_with(args, ColorMode::detect_stdout(), stdout, stderr)
 }
 
-fn run_with<I, S>(args: I, color: ColorMode) -> Result<RunOutput, CliError>
+fn run_with<I, S, W, E>(
+    args: I,
+    color: ColorMode,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> Result<u8, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
+    W: Write,
+    E: Write,
 {
     let command = parse_args(args)?;
     match command {
-        Command::Help => Ok(RunOutput::new(help(color), String::new(), 0)),
-        Command::Version => Ok(RunOutput::new(
-            format!("{PROGRAM_NAME} {PROGRAM_VERSION}\n"),
-            String::new(),
-            0,
-        )),
-        Command::Status { repos } => run_local(Operation::Status, repos, color),
-        Command::Pull { repos } => run_local(Operation::Pull, repos, color),
-        Command::Build { repos } => run_local(Operation::Build, repos, color),
-        Command::Clone { owner, repos } => run_clone(&owner, repos, color),
+        Command::Help => {
+            emit(stdout, stderr, &help(color))?;
+            Ok(0)
+        }
+        Command::Version => {
+            emit(
+                stdout,
+                stderr,
+                &format!("{PROGRAM_NAME} {PROGRAM_VERSION}\n"),
+            )?;
+            Ok(0)
+        }
+        Command::Status { repos } => run_local(Operation::Status, repos, color, stdout, stderr),
+        Command::Pull { repos } => run_local(Operation::Pull, repos, color, stdout, stderr),
+        Command::Build { repos } => run_local(Operation::Build, repos, color, stdout, stderr),
+        Command::Clone { owner, repos } => run_clone(&owner, repos, color, stdout, stderr),
     }
 }
 
@@ -199,26 +181,45 @@ fn run_local(
     operation: Operation,
     requested: Vec<String>,
     color: ColorMode,
-) -> Result<RunOutput, CliError> {
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<u8, CliError> {
     require_command("git", "install Git and ensure git is on PATH")?;
     let mut repos = discover_repositories()?;
     validate_subset(&repos, &requested)?;
     if !requested.is_empty() {
         repos.retain(|repo| requested.iter().any(|name| name == &repo.name));
     }
+    for repo in &mut repos {
+        repo.origin = origin(&repo.name);
+    }
+    repos.sort_by(|left, right| {
+        left.origin
+            .cmp(&right.origin)
+            .then(left.name.cmp(&right.name))
+    });
+    let widths = column_widths(&repos);
 
-    let mut results = Vec::with_capacity(repos.len());
+    let mut failed = false;
     for repo in repos {
-        results.push(match operation {
+        let result = match operation {
             Operation::Status => status_repo(repo),
             Operation::Pull => pull_repo(repo),
             Operation::Build => build_repo(repo),
-        });
+        };
+        failed |= result.failed;
+        emit(stdout, stderr, &render_result(&result, color, widths))?;
     }
-    Ok(render_results(results, color))
+    Ok(if failed { 1 } else { 0 })
 }
 
-fn run_clone(owner: &str, requested: Vec<String>, color: ColorMode) -> Result<RunOutput, CliError> {
+fn run_clone(
+    owner: &str,
+    requested: Vec<String>,
+    color: ColorMode,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<u8, CliError> {
     require_command("git", "install Git and ensure git is on PATH")?;
     let names = if requested.is_empty() {
         require_command("gh", "install GitHub CLI and authenticate with gh")?;
@@ -232,16 +233,29 @@ fn run_clone(owner: &str, requested: Vec<String>, color: ColorMode) -> Result<Ru
         ));
     }
 
-    let mut results = names
+    let mut repos = names
         .into_iter()
-        .map(|name| clone_repo(owner, name))
+        .map(|name| RepoResult {
+            origin: format!("https://github.com/{owner}/{name}.git"),
+            name,
+            status: String::new(),
+            details: Vec::new(),
+            failed: false,
+        })
         .collect::<Vec<_>>();
-    results.sort_by(|left, right| {
+    repos.sort_by(|left, right| {
         left.origin
             .cmp(&right.origin)
             .then(left.name.cmp(&right.name))
     });
-    Ok(render_results(results, color))
+    let widths = column_widths(&repos);
+    let mut failed = false;
+    for repo in repos {
+        let result = clone_repo(owner, repo);
+        failed |= result.failed;
+        emit(stdout, stderr, &render_result(&result, color, widths))?;
+    }
+    Ok(if failed { 1 } else { 0 })
 }
 
 fn discover_repositories() -> Result<Vec<RepoResult>, CliError> {
@@ -296,7 +310,6 @@ fn validate_subset(repos: &[RepoResult], requested: &[String]) -> Result<(), Cli
 }
 
 fn status_repo(mut repo: RepoResult) -> RepoResult {
-    repo.origin = origin(&repo.name);
     let branch = command_in_repo(&repo.name, &["branch", "--show-current"]);
     let status = command_in_repo(&repo.name, &["status", "--porcelain"]);
     match (branch, status) {
@@ -326,7 +339,6 @@ fn status_repo(mut repo: RepoResult) -> RepoResult {
 }
 
 fn pull_repo(mut repo: RepoResult) -> RepoResult {
-    repo.origin = origin(&repo.name);
     let remote = command_in_repo(&repo.name, &["ls-remote"]);
     if let Err(error) = remote {
         repo.status = "Remote unavailable".to_owned();
@@ -356,7 +368,6 @@ fn pull_repo(mut repo: RepoResult) -> RepoResult {
 }
 
 fn build_repo(mut repo: RepoResult) -> RepoResult {
-    repo.origin = origin(&repo.name);
     let path = Path::new(&repo.name).join("build.sh");
     match fs::metadata(&path) {
         Ok(metadata) if metadata.is_file() && executable(&metadata) => {}
@@ -416,16 +427,8 @@ fn build_repo(mut repo: RepoResult) -> RepoResult {
     repo
 }
 
-fn clone_repo(owner: &str, name: String) -> RepoResult {
-    let origin = format!("https://github.com/{owner}/{name}.git");
-    let mut repo = RepoResult {
-        name: name.clone(),
-        origin,
-        status: String::new(),
-        details: Vec::new(),
-        failed: false,
-    };
-    match fs::metadata(&name) {
+fn clone_repo(_owner: &str, mut repo: RepoResult) -> RepoResult {
+    match fs::metadata(&repo.name) {
         Ok(_) => {
             repo.status = "Skipped".to_owned();
             return repo;
@@ -435,13 +438,14 @@ fn clone_repo(owner: &str, name: String) -> RepoResult {
             repo.status = "Clone failed".to_owned();
             repo.failed = true;
             repo.details.push(format!(
-                "inspect clone destination {name:?}: {error}; verify permissions and retry"
+                "inspect clone destination {:?}: {error}; verify permissions and retry",
+                repo.name
             ));
             return repo;
         }
     }
     match ProcessCommand::new("git")
-        .args(["clone", &repo.origin, &name])
+        .args(["clone", &repo.origin, &repo.name])
         .output()
     {
         Ok(output) if output.status.success() => {
@@ -601,40 +605,55 @@ fn detail_suffix(text: &str) -> String {
     }
 }
 
-fn render_results(mut results: Vec<RepoResult>, color: ColorMode) -> RunOutput {
-    results.sort_by(|left, right| {
-        left.origin
-            .cmp(&right.origin)
-            .then(left.name.cmp(&right.name))
-    });
-    let repo_width = results
-        .iter()
-        .map(|result| result.name.chars().count())
-        .max()
-        .unwrap_or(0);
-    let origin_width = results
-        .iter()
-        .map(|result| result.origin.chars().count())
-        .max()
-        .unwrap_or(0);
-    let mut stdout = String::new();
-    let mut failed = false;
-    for result in results {
-        failed |= result.failed;
-        stdout.push_str("==> ");
-        stdout.push_str(&color.paint(YELLOW, &result.name));
-        stdout.push_str(&" ".repeat(repo_width - result.name.chars().count() + 1));
-        stdout.push_str(&color.paint(YELLOW, &result.origin));
-        stdout.push_str(&" ".repeat(origin_width - result.origin.chars().count() + 1));
-        stdout.push_str(&color.paint(YELLOW, &result.status));
-        stdout.push('\n');
-        for detail in result.details {
-            stdout.push_str("    ");
-            stdout.push_str(&detail);
-            stdout.push('\n');
-        }
+#[derive(Clone, Copy)]
+struct ColumnWidths {
+    repo: usize,
+    origin: usize,
+}
+
+fn column_widths(results: &[RepoResult]) -> ColumnWidths {
+    ColumnWidths {
+        repo: results
+            .iter()
+            .map(|result| result.name.chars().count())
+            .max()
+            .unwrap_or(0),
+        origin: results
+            .iter()
+            .map(|result| result.origin.chars().count())
+            .max()
+            .unwrap_or(0),
     }
-    RunOutput::new(stdout, String::new(), if failed { 1 } else { 0 })
+}
+
+fn render_result(result: &RepoResult, color: ColorMode, widths: ColumnWidths) -> String {
+    let mut stdout = String::new();
+    stdout.push_str("==> ");
+    stdout.push_str(&color.paint(YELLOW, &result.name));
+    stdout.push_str(&" ".repeat(widths.repo - result.name.chars().count() + 4));
+    stdout.push_str(&color.paint(YELLOW, &result.origin));
+    stdout.push_str(&" ".repeat(widths.origin - result.origin.chars().count() + 4));
+    stdout.push_str(&color.paint(YELLOW, &result.status));
+    stdout.push('\n');
+    for detail in &result.details {
+        stdout.push_str("    ");
+        stdout.push_str(detail);
+        stdout.push('\n');
+    }
+    stdout
+}
+
+fn emit(stdout: &mut impl Write, stderr: &mut impl Write, text: &str) -> Result<(), CliError> {
+    if let Err(error) = stdout
+        .write_all(text.as_bytes())
+        .and_then(|_| stdout.flush())
+    {
+        let _ = writeln!(stderr, "write repoctl output: {error}");
+        return Err(CliError::runtime(
+            "write repoctl output: verify standard output is writable and retry",
+        ));
+    }
+    Ok(())
 }
 
 fn help(color: ColorMode) -> String {
@@ -662,13 +681,9 @@ mod tests {
             details: Vec::new(),
             failed: false,
         }];
-        let output = render_results(results, ColorMode::new(true));
-        assert!(output.stdout().contains("\x1b[38;5;226mbits\x1b[0m"));
-        assert!(
-            output
-                .stdout()
-                .contains("\x1b[38;5;226mhttps://github.com/kquo/bits.git\x1b[0m")
-        );
-        assert!(output.stdout().contains("\x1b[38;5;226m👍 main\x1b[0m"));
+        let output = render_result(&results[0], ColorMode::new(true), column_widths(&results));
+        assert!(output.contains("\x1b[38;5;226mbits\x1b[0m"));
+        assert!(output.contains("\x1b[38;5;226mhttps://github.com/kquo/bits.git\x1b[0m"));
+        assert!(output.contains("\x1b[38;5;226m👍 main\x1b[0m"));
     }
 }

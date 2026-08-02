@@ -79,6 +79,17 @@ delegated Git clone/pull and repository build operations.
 6. Preserve inode identity and expose a contextual diagnostic for every
    failure, including the partial-write risk after truncation.
 
+### repoctl
+
+1. Parse the command and discover local repositories, or resolve the owner
+   repository list for clone.
+2. Resolve each Origin before operation execution and sort the work by Origin.
+3. Process repositories sequentially, retaining the aggregate failure state.
+4. Render and flush each completed Repo, Origin, and Status row with its
+   indented details before starting the next repository.
+5. Return the aggregate operation exit code after all selected repositories
+   have been attempted.
+
 ## Architecture Notes
 
 - Use only the Rust standard library.

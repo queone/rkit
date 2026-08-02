@@ -1,9 +1,10 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static FIXTURE_NUMBER: AtomicU64 = AtomicU64::new(0);
@@ -78,7 +79,11 @@ case "$1:$2:$3" in
   branch:--show-current:) echo main ;;
   status:--porcelain:) [ "$repo" = "dirty" ] && echo " M file"; exit 0 ;;
   ls-remote::) [ "$REPOCTL_FAIL_REMOTE" = "$repo" ] && { echo "remote failed" >&2; exit 7; }; exit 0 ;;
-  pull::) [ "$REPOCTL_FAIL_PULL" = "$repo" ] && { echo "pull failed" >&2; exit 8; }; echo "Already up to date" ;;
+  pull::)
+    [ "$REPOCTL_DELAY_PULL" = "$repo" ] && sleep 2
+    [ "$REPOCTL_FAIL_PULL" = "$repo" ] && { echo "pull failed" >&2; exit 8; }
+    echo "Already up to date"
+    ;;
   clone:*)
     [ "$REPOCTL_FAIL_CLONE" = "$3" ] && { echo "clone failed" >&2; exit 9; }
     mkdir -p "$3/.git"
@@ -123,6 +128,11 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     assert!(text.contains("https://github.com/queone/governa.git"));
     assert!(!text.contains("Repo"));
     assert!(!text.contains('\x1b'));
+    let bits = text.lines().next().unwrap();
+    let origin_start = bits.find("https://").unwrap();
+    assert!(bits[..origin_start].ends_with("    "));
+    let status_start = bits.find("👍 main").unwrap();
+    assert!(bits[..status_start].ends_with("    "));
 }
 
 #[test]
@@ -183,6 +193,44 @@ fn pull_subset_excludes_unselected_repositories() {
     let text = stdout(&output);
     assert!(text.contains("bits"));
     assert!(!text.contains("governa"));
+}
+
+#[test]
+fn pull_flushes_each_completed_row_before_a_later_repository_finishes() {
+    let fixture = Fixture::new();
+    fixture.repo("bits");
+    fixture.repo("governa");
+    fixture.script("git", fake_git());
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_repoctl"))
+        .args(["p"])
+        .current_dir(&fixture.path)
+        .env("PATH", format!("{}:/usr/bin:/bin", fixture.path.display()))
+        .env("NO_COLOR", "1")
+        .env("REPOCTL_DELAY_PULL", "governa")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn repoctl pull");
+    let stdout = child.stdout.take().expect("capture repoctl stdout");
+    let mut reader = BufReader::new(stdout);
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line).expect("read first row");
+    assert!(first_line.starts_with("==> bits"), "{first_line}");
+    let mut first_detail = String::new();
+    reader
+        .read_line(&mut first_detail)
+        .expect("read first detail");
+    assert!(first_detail.contains("Already up to date"));
+    assert!(child.try_wait().expect("check repoctl state").is_none());
+
+    let mut remainder = String::new();
+    reader
+        .read_to_string(&mut remainder)
+        .expect("read remaining output");
+    let status = child.wait().expect("wait for repoctl pull");
+    assert!(status.success());
+    assert!(remainder.contains("governa"));
 }
 
 #[test]
