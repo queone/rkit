@@ -97,6 +97,15 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Implement only the settled AC scope during Forge.
 - Return to Shape when Forge reveals a contract, scope, or Director decision change; return to Forge for implementation-only corrections.
 - Include tests, adversarial verification, and defect correction in Forge.
+- Run one exhaustive, non-mutating closure audit after Forge implementation, validation, adversarial verification, and defect correction.
+- Map every in-scope command entry point, provider/API fetch, normalized-table write, durable snapshot, stale fallback, freshness gate, and complete-snapshot reconciliation path in the closure audit.
+- Compare every discovered path with the active AC `## In Scope`, `## Out Of Scope`, and `## Acceptance Tests` sections.
+- Record `Not applicable` with repository evidence when a path category is absent.
+- Record every acceptance-test disposition and residual risk in the closure audit.
+- Block Forge completion when any required implementation path is unmapped or unverified or any implementation finding remains open.
+- Record pending Director review for manual acceptance tests without treating that pending review as an implementation finding or a Forge-blocking path gap.
+- Return to Forge for implementation defects and return to Shape for scope, contract, or Director decision changes found by the closure audit.
+- Link the closure-audit artifact in the Forge completion report and state zero unresolved implementation findings before Ratify.
 - Pause after Forge and await Ratify.
 - Treat Ratify as the Director's final review of the delivered AC.
 - Return Ratify feedback to Shape for contract or scope changes.

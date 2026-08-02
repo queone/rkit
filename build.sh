@@ -948,40 +948,61 @@ prep_main() {
 }
 
 rel_usage() {
-  cat <<'EOF'
-rel vX.Y.Z "release message"
+  printf '%s %s\n' "$(bold "$(whi5 'Usage:')")" 'rel vX.Y.Z "release message"'
+  printf '\n%s\n' 'Release message must be 80 characters or fewer.'
+}
 
-Commits the working tree, creates the tag, and pushes the tag and branch after
-interactive confirmation.
-EOF
+_git_err=''
+_release_version=''
+
+_run_git() {
+  local name="$1"
+  shift
+  printf '%s %s\n' "$(yel7 'running:')" "$(grn3 "git $*")"
+  local rc=0
+  git "$@" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    _git_err="$name failed: exit status $rc"
+    return 1
+  fi
 }
 
 _release_step() {
   local name="$1" completed="$2"
   shift 2
-  local out rc=0
-  out=$(git "$@" 2>&1) || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    [ -n "$out" ] && printf '%s\n' "$out"
+  if _run_git "$name" "$@"; then
     return 0
   fi
-  _failure "$(printf 'release: %s failed after [%s]: exit status %d: %s' \
-    "$name" "$completed" "$rc" "$(_trim "$out")")"
-  _failure \
-    'release: inspect git status and remote state before retrying any step'
+  _failure "release: $_git_err"
+  if [ -n "$completed" ]; then
+    _failure "release: completed before failure: $completed"
+    case ",$completed," in
+    *", git push tag,"*)
+      _failure "release: tag $_release_version was pushed but the branch push failed; retry with git push origin"
+      ;;
+    *", git tag,"*)
+      _failure "release: tag exists locally but was not pushed; retry with git push origin or remove it with git tag -d"
+      ;;
+    esac
+  fi
+  _failure 'release: inspect git status and remote state before retrying any step'
   return 1
 }
 
 rel_run() {
   local version="$1" message="$2" answer completed=''
+  _release_version="$version"
   _validate_release_inputs release "$version" "$message" || return 1
   _validate_git_state release "$version" || return 1
   printf '%s %s\n' "$(yel7 'release tag:')" "$(grn3 "$version")"
   printf '%s %s\n' "$(yel7 'release message:')" "$(grn3 "$(_quote "$message")")"
   printf '%s %s\n' "$(yel7 'remote:')" "$(cya4 'origin')"
-  printf '%s\n' "$(yel7 'Files that will be staged (git status):')"
-  git status --short || return 1
-  printf '%s\n' "$(yel7 'plan:')"
+  printf '%s\n' "$(yel7 "$(printf '\nFiles that will be staged (git status):')")"
+  _run_git 'git status preview' status --short || {
+    _failure "release: $_git_err"
+    return 1
+  }
+  printf '%s\n' "$(yel7 "$(printf '\nplan:')")"
   printf '%s\n' '- git add .'
   printf -- '- git commit -m %s\n' "$(_quote "$message")"
   printf '%s\n' "- git tag $version"
