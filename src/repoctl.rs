@@ -10,7 +10,6 @@ use std::sync::mpsc;
 use std::thread;
 
 const PROGRAM_NAME: &str = "repoctl";
-pub const PROGRAM_VERSION: &str = "0.3.0";
 const YELLOW: &str = "38;5;226";
 
 /// A command or repository failure with its process exit code.
@@ -66,18 +65,24 @@ struct RepoResult {
 }
 
 /// Runs `repoctl` for the provided arguments in the current directory.
-pub fn run<I, S, W, E>(args: I, stdout: &mut W, stderr: &mut E) -> Result<u8, CliError>
+pub fn run<I, S, W, E>(
+    args: I,
+    version: &str,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> Result<u8, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
     W: Write,
     E: Write,
 {
-    run_with(args, ColorMode::detect_stdout(), stdout, stderr)
+    run_with(args, version, ColorMode::detect_stdout(), stdout, stderr)
 }
 
 fn run_with<I, S, W, E>(
     args: I,
+    version: &str,
     color: ColorMode,
     stdout: &mut W,
     stderr: &mut E,
@@ -91,15 +96,11 @@ where
     let command = parse_args(args)?;
     match command {
         Command::Help => {
-            emit(stdout, stderr, &help(color))?;
+            emit(stdout, stderr, &help(color, version))?;
             Ok(0)
         }
         Command::Version => {
-            emit(
-                stdout,
-                stderr,
-                &format!("{PROGRAM_NAME} {PROGRAM_VERSION}\n"),
-            )?;
+            emit(stdout, stderr, &format!("{PROGRAM_NAME} {version}\n"))?;
             Ok(0)
         }
         Command::Status { repos } => run_local(Operation::Status, repos, color, stdout, stderr),
@@ -874,10 +875,10 @@ fn emit(stdout: &mut impl Write, _stderr: &mut impl Write, text: &str) -> Result
     Ok(())
 }
 
-fn help(color: ColorMode) -> String {
+fn help(color: ColorMode, version: &str) -> String {
     let name = color.paint("38;5;15", PROGRAM_NAME);
     format!(
-        "{name} v{PROGRAM_VERSION}\n\
+        "{name} v{version}\n\
 Control a collection of local Git repositories.\n\n\
 Usage\n  {name} COMMAND [REPO ...]\n  {name} clone OWNER [REPO ...]\n\n\
 Commands\n  s, status  Show repository status\n  p, pull    Pull selected repositories\n  c, clone   Clone an owner's repositories\n  b, build   Run ./build.sh in selected repositories\n\n\

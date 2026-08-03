@@ -7,9 +7,10 @@ Use this reference for stack selection, canonical validation, artifacts, install
 - Keep the repository/package release version separate from each installable utility version.
 - Identify each installable utility by the canonical target name selected by the stack's existing build/install mechanism.
 - Require one explicit strict stable SemVer declaration per installable utility.
-- Require each utility's `--version` result to be exactly `<utility-id> <MAJOR.MINOR.PATCH>` plus its newline on stdout with no stderr output.
+- Require each utility's `--version` result to be exactly `<utility-id> <MAJOR.MINOR.PATCH>` or `<utility-id> v<MAJOR.MINOR.PATCH>` plus its newline on stdout with no stderr output.
 - Let each stack adapter choose declaration syntax and source layout while reporting the normalized utility contract.
-- Validate normalized declarations and version results before compilation, installation, or release-metadata writes.
+- Validate normalized declarations before compilation.
+- Validate compiled version results before installation or release-metadata writes.
 - Preserve independent utility versions during repository release prep.
 
 ## Go
@@ -30,6 +31,9 @@ Use this reference for stack selection, canonical validation, artifacts, install
 - Install binaries into `$CARGO_HOME/bin`, or `$HOME/.cargo/bin` when `CARGO_HOME` is unset.
 - Bump the root package version and refresh `Cargo.lock` during release prep.
 - Accept declared binary names for scoped builds and preserve package-wide shared validation.
+- Require one literal `PROGRAM_VERSION: &str` strict stable SemVer declaration in each declared binary path.
+- Validate every declaration before compilation and each compiled binary before installation.
+- Validate every compiled binary before release-metadata writes.
 
 ## Terraform
 

@@ -71,6 +71,11 @@ Sections above ## Project Practices are governa-maintained canon and update via 
 
 - Run all repository validation through `./build.sh`.
 - Declare every installable Cargo binary with an explicit literal `[[bin]]` name and path.
+- Declare exactly one literal `PROGRAM_VERSION: &str` strict stable SemVer value in each declared binary path.
+- Print exactly `<utility-id> <MAJOR.MINOR.PATCH>` or `<utility-id> v<MAJOR.MINOR.PATCH>` plus its newline for `--version` with no stderr output.
+- Validate every utility declaration before compilation.
+- Validate each compiled utility before installing it.
+- Validate every compiled utility before writing release metadata.
 - Use space-separated binary names for scoped builds.
 - Keep selected target order deterministic under the byte locale.
 - Keep Cargo compilation artifacts in the build-managed temporary target.
@@ -80,7 +85,8 @@ Sections above ## Project Practices are governa-maintained canon and update via 
 - Install selected Cargo binaries with `--no-track --force` during a scoped build.
 - Preserve unselected installed binaries and Cargo tracking metadata during scoped installation.
 - Install binaries only during successful post-change release validation.
-- Skip binary installation during pre-change validation and `--no-build` release prep.
+- Skip binary installation during pre-change validation.
+- Reject `--no-build` release prep when independent utility validation is required.
 - Run release-prep pre-change and post-change validation package-wide.
 - Set `CARGO_HOME` to an external path when isolating binary installation.
 - Resolve installed-binary name conflicts before rerunning the build.

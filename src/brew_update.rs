@@ -6,7 +6,6 @@ use std::io;
 use std::process::{Command, Output, Stdio};
 
 const PROGRAM_NAME: &str = "brew-update";
-const PROGRAM_VERSION: &str = "1.3.5";
 const GREEN: &str = "38;5;46";
 const RED: &str = "38;5;124";
 const RECOVERY: &str = "verify that Homebrew is installed and brew is on PATH, then retry";
@@ -32,19 +31,19 @@ impl CliError {
 
 /// Runs the Homebrew workflow, streaming child command output to the process
 /// standard streams.
-pub fn run<I, S>(args: I) -> Result<(), CliError>
+pub fn run<I, S>(args: I, version: &str) -> Result<(), CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
 {
     let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
     if is_version_request(&args) {
-        println!("{PROGRAM_NAME} v{PROGRAM_VERSION}");
+        println!("{PROGRAM_NAME} v{version}");
         return Ok(());
     }
 
     let color = ColorMode::detect_stdout();
-    println!("{PROGRAM_NAME} {PROGRAM_VERSION}\n");
+    println!("{PROGRAM_NAME} {version}\n");
 
     run_streamed_command(&["update"], "brew update", color)
         .map_err(|error| workflow_error("Error during brew update", error, color))?;

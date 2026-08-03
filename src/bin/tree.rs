@@ -1,8 +1,10 @@
 use std::io::{self, Write};
 use std::process::ExitCode;
 
+const PROGRAM_VERSION: &str = "1.4.0";
+
 fn main() -> ExitCode {
-    match rkit::tree::run(std::env::args_os().skip(1)) {
+    match rkit::tree::run(std::env::args_os().skip(1), PROGRAM_VERSION) {
         Ok(output) => {
             if let Err(error) = io::stdout().write_all(output.stdout().as_bytes()) {
                 eprintln!("write tree output: {error}; verify standard output is writable");

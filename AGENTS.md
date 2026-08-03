@@ -95,17 +95,25 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Edit the AC during Shape; do not begin implementation during Shape.
 - Pause after Shape and await explicit Director implementation-ready confirmation to Forge.
 - Implement only the settled AC scope during Forge.
-- Return to Shape when Forge reveals a contract, scope, or Director decision change; return to Forge for implementation-only corrections.
+- Return to Shape when Forge reveals a contract, scope, or Director decision change.
+- Return to Forge when Forge reveals an implementation-only correction.
 - Include tests, adversarial verification, and defect correction in Forge.
 - Run one exhaustive, non-mutating closure audit after Forge implementation, validation, adversarial verification, and defect correction.
+- Keep the closure-audit working record in the active agent's session.
+- Do not create a separate closure-audit artifact.
 - Map every in-scope command entry point, provider/API fetch, normalized-table write, durable snapshot, stale fallback, freshness gate, and complete-snapshot reconciliation path in the closure audit.
+- Check every in-scope governance instruction against `## Instruction Style` during the closure audit.
+- Map every referenced governance document across applicable source, template, and rendered-consumer paths in the closure audit.
 - Compare every discovered path with the active AC `## In Scope`, `## Out Of Scope`, and `## Acceptance Tests` sections.
 - Record `Not applicable` with repository evidence when a path category is absent.
 - Record every acceptance-test disposition and residual risk in the closure audit.
 - Block Forge completion when any required implementation path is unmapped or unverified or any implementation finding remains open.
 - Record pending Director review for manual acceptance tests without treating that pending review as an implementation finding or a Forge-blocking path gap.
-- Return to Forge for implementation defects and return to Shape for scope, contract, or Director decision changes found by the closure audit.
-- Link the closure-audit artifact in the Forge completion report and state zero unresolved implementation findings before Ratify.
+- Return to Forge for implementation defects found by the closure audit.
+- Return to Shape for scope, contract, or Director decision changes found by the closure audit.
+- Report every acceptance-test disposition in the Forge completion report.
+- Report every residual risk in the Forge completion report.
+- State zero unresolved implementation findings in the Forge completion report before Ratify.
 - Pause after Forge and await Ratify.
 - Treat Ratify as the Director's final review of the delivered AC.
 - Return Ratify feedback to Shape for contract or scope changes.

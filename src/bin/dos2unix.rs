@@ -2,6 +2,8 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
+const PROGRAM_VERSION: &str = "1.4.0";
+
 fn execute<I, S, W, E>(args: I, stdout: &mut W, stderr: &mut E) -> u8
 where
     I: IntoIterator<Item = S>,
@@ -9,7 +11,7 @@ where
     W: Write,
     E: Write,
 {
-    match rkit::dos2unix::run(args) {
+    match rkit::dos2unix::run(args, PROGRAM_VERSION) {
         Ok(output) => {
             if let Err(error) = stdout.write_all(output.stdout()) {
                 let _ = writeln!(

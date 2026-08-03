@@ -3,6 +3,7 @@
 | Version | Summary |
 |---------|---------|
 | Unreleased | AC2 ports the tree utility to a standard-library-only Rust binary with deterministic traversal, skipped-descendant warnings, contextual root failures, compatibility output, isolated builds, and Cargo installation; AC5 ports dos2unix with byte-safe preview and conversion, explicit multi-binary layout, contextual failures, and macOS toolchain setup; AC6 adds space-separated scoped Rust builds while preserving package-wide release validation; preserve README.md project content; preserve CHANGELOG.md project history |
+| 1.10.0 | AC20: adopt Governa v0.157.0 Rust workflow |
 | 1.9.0 | AC19: correct repoctl result rows and preserve build colors |
 | 1.8.0 | AC18: stream repoctl operations and bump repoctl to v0.2.0 |
 | 1.7.1 | AC17: sync Rust release output; remove stale build marker |

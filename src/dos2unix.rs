@@ -7,7 +7,6 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 const PROGRAM_NAME: &str = "dos2unix";
-pub const PROGRAM_VERSION: &str = "1.4.0";
 const WHITE: &str = "38;5;15";
 
 /// A command-line or filesystem failure with its process exit code.
@@ -184,24 +183,29 @@ fn not_regular_error() -> io::Error {
 }
 
 /// Runs `dos2unix` for the provided argument sequence.
-pub fn run<I, S>(args: I) -> Result<RunOutput, CliError>
+pub fn run<I, S>(args: I, version: &str) -> Result<RunOutput, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
 {
-    run_with(args, &Filesystem, ColorMode::detect_stdout())
+    run_with_version(args, &Filesystem, ColorMode::detect_stdout(), version)
 }
 
-fn run_with<I, S, F>(args: I, files: &F, color: ColorMode) -> Result<RunOutput, CliError>
+fn run_with_version<I, S, F>(
+    args: I,
+    files: &F,
+    color: ColorMode,
+    version: &str,
+) -> Result<RunOutput, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
     F: FileAccess,
 {
     match parse_args(args)? {
-        Command::Help => Ok(RunOutput::from_stdout(help(color).into_bytes())),
+        Command::Help => Ok(RunOutput::from_stdout(help(color, version).into_bytes())),
         Command::Version => Ok(RunOutput::from_stdout(
-            format!("{PROGRAM_NAME} v{PROGRAM_VERSION}\n").into_bytes(),
+            format!("{PROGRAM_NAME} v{version}\n").into_bytes(),
         )),
         Command::Preview(path) => files
             .preview(&path)
@@ -262,7 +266,7 @@ where
     })
 }
 
-fn help(color: ColorMode) -> String {
+fn help(color: ColorMode, version: &str) -> String {
     let name = color.paint(WHITE, PROGRAM_NAME);
     format!(
         "{name} v{}\n\
@@ -278,8 +282,18 @@ Options\n\
   -v, --version  Print version and exit\n\
   -h, -?, --help Show this help message and exit\n\
   --             End option parsing\n",
-        PROGRAM_VERSION
+        version
     )
+}
+
+#[cfg(test)]
+fn run_with<I, S, F>(args: I, files: &F, color: ColorMode) -> Result<RunOutput, CliError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+    F: FileAccess,
+{
+    run_with_version(args, files, color, "1.4.0")
 }
 
 fn render_preview(input: &[u8], color: ColorMode) -> Vec<u8> {

@@ -7,7 +7,6 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 const PROGRAM_NAME: &str = "tree";
-pub const PROGRAM_VERSION: &str = "1.4.0";
 const GREEN: &str = "38;5;46";
 const BLUE: &str = "38;5;21";
 const CYAN: &str = "38;5;51";
@@ -125,24 +124,29 @@ struct Entry {
 ///
 /// Successful output is returned as a complete string so traversal failures
 /// cannot leak a partial tree to standard output.
-pub fn run<I, S>(args: I) -> Result<RunOutput, CliError>
+pub fn run<I, S>(args: I, version: &str) -> Result<RunOutput, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
 {
-    run_with(args, &Filesystem, ColorMode::detect_stdout())
+    run_with_version(args, &Filesystem, ColorMode::detect_stdout(), version)
 }
 
-fn run_with<I, S, D>(args: I, source: &D, color: ColorMode) -> Result<RunOutput, CliError>
+fn run_with_version<I, S, D>(
+    args: I,
+    source: &D,
+    color: ColorMode,
+    version: &str,
+) -> Result<RunOutput, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<OsString>,
     D: DirectorySource,
 {
     match parse_args(args)? {
-        Command::Help => Ok(RunOutput::new(help(color), Vec::new())),
+        Command::Help => Ok(RunOutput::new(help(color, version), Vec::new())),
         Command::Version => Ok(RunOutput::new(
-            format!("{PROGRAM_NAME} v{PROGRAM_VERSION}\n"),
+            format!("{PROGRAM_NAME} v{version}\n"),
             Vec::new(),
         )),
         Command::Tree {
@@ -192,7 +196,7 @@ where
     })
 }
 
-fn help(color: ColorMode) -> String {
+fn help(color: ColorMode, version: &str) -> String {
     let name = color.paint(WHITE, PROGRAM_NAME);
     let usage = color.paint(WHITE, "Usage");
     let options = color.paint(WHITE, "Options");
@@ -217,8 +221,18 @@ Directory tree printer — https://github.com/queone/rkit\n\
   {name} -f /path/to/directory\n\
   {name} /path/to/directory --full-path\n\
   {name} -- -directory\n",
-        PROGRAM_VERSION
+        version
     )
+}
+
+#[cfg(test)]
+fn run_with<I, S, D>(args: I, source: &D, color: ColorMode) -> Result<RunOutput, CliError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+    D: DirectorySource,
+{
+    run_with_version(args, source, color, "1.4.0")
 }
 
 fn render_tree<D: DirectorySource>(
@@ -535,7 +549,7 @@ mod tests {
     fn reports_utility_version() {
         let filesystem = source([]);
         let result = run_with(["--version"], &filesystem, ColorMode::new(false)).unwrap();
-        assert_eq!(result.stdout(), format!("tree v{PROGRAM_VERSION}\n"));
+        assert_eq!(result.stdout(), "tree v1.4.0\n");
     }
 
     #[test]

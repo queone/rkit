@@ -46,7 +46,7 @@ rustup component add rustfmt clippy
 
 The canonical build formats, lints, tests, and release-builds the package in a
 temporary Cargo target outside the repository. It validates each utility's
-module-local stable `PROGRAM_VERSION`, then builds and installs each utility in
+declared-path stable `PROGRAM_VERSION`, then builds and installs each utility in
 deterministic name order under `${CARGO_HOME:-$HOME/.cargo}/bin`. It leaves no
 repository-local `target/` directory.
 
