@@ -1,6 +1,19 @@
 use std::env;
 use std::io::{self, IsTerminal};
 
+// Shared 256-color ANSI codes, sourced from governa-color. Used by `jy`;
+// add more as future utilities need them.
+pub(crate) const BLUE5: &str = "38;5;21";
+pub(crate) const BLUE7: &str = "38;5;33";
+pub(crate) const GRAY5: &str = "38;5;245";
+pub(crate) const GREEN3: &str = "38;5;34";
+pub(crate) const GREEN5: &str = "38;5;46";
+pub(crate) const MAGENTA5: &str = "38;5;201";
+pub(crate) const RED3: &str = "38;5;124";
+pub(crate) const WHITE5: &str = "38;5;231";
+pub(crate) const WHITE10: &str = "38;5;15";
+pub(crate) const YELLOW5: &str = "38;5;220";
+
 #[derive(Clone, Copy)]
 pub(crate) struct ColorMode(bool);
 

@@ -1,12 +1,28 @@
 [package]
 name = "rkit"
-version = "1.11.2"
+version = "1.12.0"
 edition = "2024"
 
 [dependencies]
 # Pin and vendor OpenSSL for self-contained RSA, X.509, and verified TLS parity.
 openssl = { version = "=0.10.73", features = ["vendored"] }
 serde_json = "=1.0.145"
+# Pin regex for fr's search/replace; RE2-derived syntax matches Go's regexp.
+regex = "=1.13.1"
+# Pin yaml-rust2 for jy's YAML parse/serialize and token-level colorizing.
+yaml-rust2 = "=0.11.0"
+# Pin comrak for mdview's GFM rendering and default-safe HTML sanitization.
+# Default features pull in a CLI (clap) and syntax highlighting (syntect +
+# onig); mdview uses neither, so both are disabled.
+comrak = { version = "=0.54.0", default-features = false }
+# Pin scraper for web's CSS-selector HTML scraping of search results.
+scraper = "=0.27.0"
+# Pin ab_glyph for cash5's "winning circle" glyph rasterization (pure Rust,
+# no C toolchain) and png for its PNG encoding (real DEFLATE compression via
+# its own transitive deps); no image/imageproc crate is needed since pixel
+# plotting is hand-rolled directly, matching the Go original's approach.
+ab_glyph = "=0.2.32"
+png = "=0.18.1"
 
 [lib]
 path = "src/lib.rs"
@@ -82,3 +98,31 @@ path = "src/bin/pgen.rs"
 [[bin]]
 name = "pman"
 path = "src/bin/pman.rs"
+
+[[bin]]
+name = "fr"
+path = "src/bin/fr.rs"
+
+[[bin]]
+name = "sms"
+path = "src/bin/sms.rs"
+
+[[bin]]
+name = "jy"
+path = "src/bin/jy.rs"
+
+[[bin]]
+name = "mdview"
+path = "src/bin/mdview.rs"
+
+[[bin]]
+name = "retotal"
+path = "src/bin/retotal.rs"
+
+[[bin]]
+name = "web"
+path = "src/bin/web.rs"
+
+[[bin]]
+name = "cash5"
+path = "src/bin/cash5.rs"

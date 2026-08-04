@@ -10,15 +10,26 @@ bulk filename renaming and case conversion, and `vdrop`, `vjoin`, and `vkeep`
 for ffmpeg-based video editing and joining, `bak` for dated file or directory
 backups, `days` for calendar-day calculations, `decolor` for removing ANSI
 SGR color sequences from files or streams, `dl` for downloading video with
-yt-dlp, `pgen` for generating memorable passwords, and `pman` for calling
-Azure REST APIs.
+yt-dlp, `pgen` for generating memorable passwords, `pman` for calling
+Azure REST APIs, `fr` for regex search and replace across a file tree, `sms`
+for sending SMS messages via textbelt.com, `jy` for converting between JSON
+and YAML, `mdview` for viewing GitHub Flavored Markdown in a browser or
+writing it as HTML, `retotal` for consolidating and re-tallying financial
+TOTALS, `web` for searching DuckDuckGo from the command line, and `cash5` for
+NJ Cash 5 lottery data, statistics, and number recommendations.
 
 ## Why
 
 Use `rkit` when compact, cross-platform implementations of common command-line
 tools are preferable. Certificate and TLS operations use the pinned vendored
-OpenSSL dependency declared in `Cargo.toml`; vjoin uses its pinned JSON parser,
-and the other utilities use the Rust standard library and shared package code.
+OpenSSL dependency declared in `Cargo.toml`; vjoin uses its pinned JSON parser;
+`fr` uses the pinned `regex` crate for its search/replace matching; `jy` uses
+the already-pinned `serde_json` plus the pinned `yaml-rust2` crate for YAML;
+`mdview` uses the pinned `comrak` crate for GitHub-Flavored-Markdown
+rendering; `web` and `cash5` use the pinned `scraper` crate for CSS-selector
+HTML scraping; `cash5` additionally uses the pinned `ab_glyph` and `png`
+crates for its iTerm2 "winning circle" image rendering; and the other
+utilities use the Rust standard library and shared package code.
 
 ## Install
 
@@ -77,6 +88,167 @@ Cargo's `--no-track --force` mode so installed but unselected `rkit` binaries
 remain untouched and Cargo's tracked package metadata remains unchanged. An
 explicitly selected utility can overwrite a same-named destination binary.
 Run `./build.sh` without targets for handoff and release validation.
+
+## cash5
+
+```text
+cash5 v2.0.0
+NJ Cash 5 daily numbers recommender
+```
+
+`cash5` fetches NJ Cash 5 draw history from the NJ Lottery API (falling back
+to scraping `lottonumbers.com` on a primary 404), caches it at
+`$XDG_STATE_HOME/cash5/draws.json` (migrating a legacy
+`$XDG_CONFIG_HOME/cash5/draws.json` on first use and pruning pre-2014-09-14
+draws from the 1-40-number-pool era), and by default displays the last 10
+draws, the current jackpot, the last winning numbers with any repeat history,
+the closest prior matches, and 5 collision-avoiding number recommendations —
+none of which has ever won historically. `-s`/`--stats` shows frequency
+tables, chi-squared uniformity tests, and a birthday-paradox repeat analysis;
+`-m [N]`/`--match-analysis` shows per-draw closest-match and cross-dataset
+pattern analysis; `-o [N]` shows an odds/EV table; `-a`/`--all` lists every
+draw; `-f`/`--fetch-all` backfills full history; `-d DATE` dumps a draw's raw
+fields. `-v`/`--version` prints only the version — this deliberately diverges
+from the Go original, which showed the full usage screen instead, matching
+the fix already applied to `mdview` and `retotal`. Draw dates always render
+in US Eastern Time (the pool's home timezone) rather than the operator's
+local timezone, avoiding a Go quirk where the same instant renders a
+different calendar day depending on where the tool runs. In an iTerm2
+session, the daily summary and each displayed match-analysis draw also emit
+a "winning circle" diagram — numbers 1-45 arranged around a ring with
+winners highlighted and spoked — rendered with the pinned `ab_glyph` and
+`png` crates and the same embedded "Go Mono" font the Go original uses, sent
+as an inline image via iTerm2's escape-sequence protocol.
+
+## jy
+
+```text
+jy v2.0.0
+JSON / YAML converter — https://github.com/queone/rkit
+Usage
+  jy [options] [file]
+```
+
+`jy` detects whether input (a file argument or piped stdin) is JSON or YAML
+and prints it in the other format with 2-space indent: JSON in, YAML out;
+YAML in, JSON out. A bare `null`/empty document counts as neither format.
+Output is colorized by token — mapping keys and mapping-value strings blue,
+other strings green (yellow immediately after an anchor/alias), plain
+numbers/bools magenta, anchors/aliases yellow — unless `-d` prints plainly.
+`-c` prints a file's own content colorized without converting it. Piped or
+file input is ANSI-stripped before parsing, reusing `decolor`'s CSI-SGR
+filter. YAML comments pass through uncolored: the underlying scanner
+(`yaml-rust2`) does not tokenize them, unlike the Go original's lexer.
+
+## web
+
+```text
+web v2.0.0
+Usage
+  web [options] [query]
+```
+
+`web` searches DuckDuckGo and prints a numbered list of `title`/`link`
+results by default, `-j`/`--json` for the full `title`/`link`/`snippet`
+array as JSON, or `--open N` to open the Nth (1-based) result in the
+default browser (`-b`/`--browser` overrides it with a specific command).
+`-t`/`--timeout`, `-u`/`--user-agent`, and `-r`/`--referrer` (or their
+`DUCKGO_TIMEOUT`/`DUCKGO_USER_AGENT`/`DUCKGO_REFERRER` environment
+equivalents) default to 5 seconds, a realistic browser User-Agent, and
+`https://google.com` respectively when unset — this deliberately diverges
+from the Go original, whose real (undocumented) behavior sent no timeout
+and empty headers in that case, despite documenting the same defaults.
+An empty query is rejected before any request is sent. The interactive
+fuzzy-finder picker Go embeds is deferred to a future release; `--open N`
+is its replacement for now.
+
+## retotal
+
+```text
+retotal v2.0.0
+retotal FILE
+retotal -h | --help
+```
+
+`retotal` reads CSV or space-aligned financial data (columns: TYPE,
+DESCRIPTION, MO/AVG, YR/AVG, NOTES) and writes an aligned `<stem>.txt`
+summary with a computed `TOTAL` row, signed with a recalculation note as
+its last line. Running it again on that signed output file re-tallies in
+place: it recomputes `TOTAL` from the current rows and rewrites the file,
+refusing to run at all — and leaving the file untouched — if the signature
+line is missing or altered. CSV headers are matched case-insensitively;
+aligned-input headers are matched case-sensitively (a real asymmetry, not
+a bug). Values under 1,000 are left as-is; larger values get thousand
+separators. `-h`/`--help`, no arguments, or more than one argument all
+print the usage screen and exit 0.
+
+## mdview
+
+```text
+mdview v2.0.0
+Usage
+  mdview [-o FILE] FILE
+```
+
+`mdview` renders a local Markdown file as GitHub Flavored Markdown (tables,
+strikethrough, task lists, autolinks) via the pinned `comrak` crate and
+either opens it in the default browser or, with `-o`/`--output FILE`
+(`-o=FILE`/`--output=FILE` also accepted), writes the HTML to that file
+without opening a browser — refusing an existing destination either way.
+`<details>`/`<summary>` are the only supported raw HTML disclosure elements;
+their attributes are always discarded, and Markdown (including GFM tables)
+keeps rendering inside them. Every other raw HTML element, disclosure markup
+outside a `<details>` block, and dangerous links (e.g. `javascript:`) are
+omitted or neutralized — `comrak`'s default-safe rendering replaces raw HTML
+with the literal comment `<!-- raw HTML omitted -->`, matching the Go
+original's `goldmark` default. Relative links and images resolve from the
+resolved input's directory via a `file://` base URL. The embedded
+`github-markdown-css` stylesheet is checked against a pinned SHA-256 at
+compile time. Browser-opening is macOS (`open`) and Linux (`xdg-open`)
+only; Windows is out of scope, matching `jy`.
+
+## fr
+
+```text
+fr v2.0.0
+Usage:
+  fr <REGEX>                -> search-only mode
+  fr <FROM> <TO>            -> show-only mode
+  fr <FROM> <TO> -f         -> replace-and-write mode
+```
+
+`fr` walks the current directory tree, skipping hidden directories (names
+starting with `.`) without descending into them, and considers every regular
+file that the host `file -b --mime-type` command reports as `text/*`,
+`application/xml`, or `application/json`. Single-argument mode highlights
+regex matches; `FROM TO` show-only mode highlights `FROM` matches without
+writing (`TO` is accepted but unused, matching the Go original); `FROM TO -f`
+(or `--force`) replaces matches in place via a temp file plus rename,
+preserving the original file's mode. An invalid regex silently matches
+nothing across the whole run. Matches highlight in red and filenames in
+yellow when color is enabled.
+
+## sms
+
+```text
+sms v2.0.0
+SMS CLI utility 2.0.0
+sms <CellPhoneNum> <Message>
+sms -v | --version
+sms -y Create skeleton ~/.config/sms/config.ini file
+Visit https://textbelt.com for more info.
+```
+
+`sms` sends a text message through the https://textbelt.com API using a
+`svcurl`/`svckey` pair read from `~/.config/sms/config.ini` (`-y`/`--init`
+creates a skeleton file). A legacy `~/.smsrc` is migrated into the new path
+on first use, with a symlink skipped (not migrated) and a warning when both
+paths exist. `-v`/`--version` combined with another operand is rejected with
+a diagnostic; this deliberately diverges from the Go original, which
+silently treated a combined `-v` as the phone number. A non-2xx response
+prints `Error. HTTP error code = <status>` and exits 1. The HTTP client is
+the same minimal standard-library implementation `pman` uses; no new network
+dependency was added.
 
 ## bak
 

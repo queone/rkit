@@ -4,14 +4,16 @@
 
 Provide small, standalone Rust command-line utilities with deterministic
 behavior. Certificate and TLS operations use the pinned vendored OpenSSL
-dependency, vjoin uses pinned serde_json for ffprobe parsing, and the other
-utilities avoid third-party runtime dependencies.
+dependency, vjoin uses pinned serde_json for ffprobe parsing, fr uses the
+pinned regex crate for its search/replace matching, and the other utilities
+avoid third-party runtime dependencies.
 
 ## System Summary
 
 The root Cargo package builds the `tree`, `dos2unix`, `brew-update`, `repoctl`,
 `certgen`, `certls`, `rn`, `rncap`, `rnlower`, `vdrop`, `vjoin`, `vkeep`, `bak`,
-`days`, `decolor`, `dl`, `pgen`, and `pman` binaries. Each binary
+`days`, `decolor`, `dl`, `pgen`, `pman`, `fr`, `sms`, `jy`, `mdview`,
+`retotal`, `web`, and `cash5` binaries. Each binary
 keeps process streams and exit codes at its entrypoint and delegates testable
 behavior to a namespaced `rkit` library module. The package reads the local
 filesystem and writes to standard output and standard error; file mutation is
@@ -38,6 +40,13 @@ delegated Git clone/pull and repository build operations.
 - `src/bin/dl.rs`: `dl` process streams and exit-code boundary
 - `src/bin/pgen.rs`: `pgen` process streams and exit-code boundary
 - `src/bin/pman.rs`: `pman` process streams and exit-code boundary
+- `src/bin/fr.rs`: `fr` process streams and exit-code boundary
+- `src/bin/sms.rs`: `sms` process streams and exit-code boundary
+- `src/bin/jy.rs`: `jy` process streams and exit-code boundary
+- `src/bin/mdview.rs`: `mdview` process streams and exit-code boundary
+- `src/bin/retotal.rs`: `retotal` process streams and exit-code boundary
+- `src/bin/web.rs`: `web` process streams and exit-code boundary
+- `src/bin/cash5.rs`: `cash5` process streams and exit-code boundary
 - `src/tree.rs`: tree parsing, traversal, path handling, and rendering
 - `src/dos2unix.rs`: CRLF parsing, preview, conversion, and diagnostics
 - `src/repoctl.rs`: repository discovery, operation execution, sorting, rendering, and diagnostics
@@ -54,6 +63,15 @@ delegated Git clone/pull and repository build operations.
 - `src/dl.rs`: yt-dlp presence checks, extension normalization, download/upgrade execution, and diagnostics
 - `src/pgen.rs`: embedded-wordlist selection, rejection-sampled randomness, and password formatting
 - `src/pman.rs`: injectable token-source and HTTP-transport traits, a minimal HTTP/1.1-over-TLS client, and request/response handling
+- `src/fr.rs`: sorted hidden-directory-skipping tree walk, `file`-gated text detection, regex search/replace/highlight, and atomic file rewriting
+- `src/sms.rs`: XDG config resolution, legacy-path migration, INI parsing, and form-encoded HTTP POST via the reused `pman` transport
+- `src/jy.rs`: JSON/YAML format detection, bidirectional conversion, token-aware colorizing, and ANSI-stripped input handling
+- `src/mdview.rs`: GFM rendering via `comrak`, `<details>`/`<summary>` disclosure preprocessing, HTML document assembly, and injectable file/browser output
+- `src/github-markdown.css`, `src/github-markdown-css-LICENSE`: embedded, SHA-256-pinned upstream stylesheet and its MIT license
+- `src/retotal.rs`: CSV/aligned parsing, two-stage numeric formatting, signature-gated consolidate/re-tally dispatch
+- `src/web.rs`: DuckDuckGo query building, a timeout-aware HTTPS transport, CSS-selector HTML scraping, JSON output, and browser-opening (reusing `mdview`'s `BrowserOpener`)
+- `src/cash5/`: NJ Cash 5 draw fetching (primary API plus `scraper`-based `lottonumbers.com` backup), XDG state persistence with legacy-era pruning, a collision-avoiding recommendation engine, statistics, match analysis, an odds table, iTerm2 "winning circle" image rendering, and CLI dispatch — one submodule per Go source-file concern (`api`, `dates`, `display`, `match_analysis`, `model`, `recommend`, `render`, `stats`, `store`, `strategy`)
+- `src/gomono.ttf`, `src/gomono-LICENSE`: embedded, SHA-256-pinned "Go Mono" TrueType font (extracted from `golang.org/x/image/font/gofont/gomono`) and its BSD-3-Clause license
 - `src/color.rs`: shared terminal color policy
 - `src/lib.rs`: narrow package-binary library boundary
 - `tests/tree_cli.rs`: compiled `tree` behavior coverage
@@ -73,6 +91,13 @@ delegated Git clone/pull and repository build operations.
 - `tests/dl_cli.rs`: compiled `dl` stub-yt-dlp, extension, and version coverage
 - `tests/pgen_cli.rs`: compiled `pgen` structural password-property coverage
 - `tests/pman_cli.rs`: compiled `pman` stub-azm, injectable-seam, and local-TCP-transport coverage
+- `tests/fr_cli.rs`: compiled `fr` walk, search/replace, and version coverage
+- `tests/sms_cli.rs`: compiled `sms` config-migration, skeleton-config, and local-TCP-transport coverage
+- `tests/jy_cli.rs`: compiled `jy` conversion, colorizing, piped/file input, and version coverage
+- `tests/mdview_cli.rs`: compiled `mdview` rendering, output-flag, diagnostics, and version coverage
+- `tests/retotal_cli.rs`: compiled `retotal` consolidate/re-tally, signature, and version coverage
+- `tests/web_cli.rs`: compiled `web` argument-validation, diagnostics, and version coverage
+- `tests/cash5_cli.rs`: compiled `cash5` argument-validation, diagnostics, and version coverage
 - `tests/build_cli.sh`: build routing and release-safety coverage
 - `build.sh`: isolated Cargo validation and package-binary installation
 
@@ -229,11 +254,75 @@ delegated Git clone/pull and repository build operations.
 3. Warn on stderr for a token not prefixed `eyJ` without blocking the request.
 4. Send the request through an injectable `HttpTransport`, printing the raw response body regardless of HTTP status.
 
+### fr
+
+1. Dispatch on argument count: single-argument search, `FROM TO` show-only (highlighting `FROM` only; `TO` is accepted but unused, matching Go), or `FROM TO -f`/`--force` replace-and-write.
+2. Walk the tree depth-first in sorted order from the current directory, skipping hidden directories entirely and non-regular entries (symlinks included).
+3. Gate each remaining regular file through the host `file -b --mime-type` command, accepting `text/*`, `application/xml`, and `application/json`.
+4. Match with a pinned `regex` pattern compiled once; an invalid pattern silently matches nothing for the whole run.
+5. Highlight matching lines in place, or replace matches via a temp file plus rename that preserves the original file's mode.
+6. Abort the whole run with a contextual diagnostic on any read/write I/O failure during the walk, matching Go's fatal-on-`walkFn`-error behavior.
+
+### sms
+
+1. Dispatch on argument count and flags; a bad count or an unrecognized single argument prints usage and exits 0, matching Go.
+2. Reject `-v`/`--version` combined with another operand with a diagnostic; this deliberately diverges from Go, which silently treated the combined `-v` as the phone number.
+3. Resolve `~/.config/sms/config.ini` (honoring an absolute `XDG_CONFIG_HOME`), migrating a legacy `~/.smsrc` on first use: skip a symlink with a warning, warn and prefer the new path when both exist, and fall back to copy-plus-delete across a filesystem boundary.
+4. Parse the `[global]` `svcurl`/`svckey` pair from the resolved file with a hand-rolled INI reader; an unreadable or malformed file degrades to the same "not defined" diagnostics as Go's discarded `ini.LoadFile` error.
+5. POST the form-encoded `key`/`message`/`phone` fields through the reused `pman` `HttpTransport`; print `Error. HTTP error code = <status>` for a non-200 response and a contextual diagnostic for a transport failure.
+
+### jy
+
+1. Strip ANSI SGR sequences from file or piped input before parsing, reusing `decolor`'s filter.
+2. Detect JSON first (JSON is a YAML subset); fall back to YAML. A bare `null`/empty document counts as neither and reports `Not JSON nor YAML`.
+3. Convert the detected value to the other format with 2-space indent via a hand-written `Yaml`/`serde_json::Value` bridge (`yaml-rust2` has no serde integration).
+4. Print plainly for `-d`, or colorize by walking `yaml-rust2`'s token stream and coloring the source span between consecutive token markers; `-c` colorizes a file's own raw content without converting it.
+5. Comments are not tokenized by the scanner and pass through uncolored, diverging from the Go original's comment-preserving lexer.
+
+### mdview
+
+1. Read the resolved input file as UTF-8 text (a stricter requirement than the Go original, which processes arbitrary bytes).
+2. Preprocess `<details>`/`<summary>` regions ahead of Markdown rendering: recursively isolate them, protect fenced/indented code, inline code spans, HTML comments, and raw containers from being misread as disclosure tags, and drop malformed or orphaned disclosure tags. An unclosed `<details>` fully unwraps, demoting its own `<summary>` to plain text.
+3. Render each region via `comrak` with GFM extensions enabled and `render.unsafe` left at its default `false`, so raw HTML becomes the literal comment `<!-- raw HTML omitted -->` and dangerous links are neutralized; `<details>`/`<summary>` tags always emit with every attribute discarded.
+4. Assemble the HTML document, escaping only the filename-derived title; embed the base URL, the SHA-256-pinned stylesheet, and the rendered body as trusted.
+5. Write persistent output (`-o`, mode `0o644`, refuses an existing destination) or a uniquely named temporary file (mode `0o600`) opened through an injectable `BrowserOpener` — left on disk on success, removed on a failed open.
+
+### retotal
+
+1. Dispatch on the file's first non-empty line: the retotal-output header (`DESCRIPTION`/`MO/AVG`/`YR/AVG`, 2+-space separated) selects re-tally; anything else selects consolidate.
+2. Consolidate detects CSV vs. space-aligned input (strip quoted substrings, check for a remaining comma, else a 2+-space run), parses rows (CSV headers case-insensitive with an explicit TYPE column; aligned headers case-sensitive with TYPE inferred from a `" - "` split), drops total/duplicate-header rows, and computes MO/YR totals.
+3. Re-tally requires the exact trailing signature line first — refusing and leaving the file untouched otherwise — then drops the old TOTAL row and any prior signature before recomputing.
+4. Numeric formatting is two-stage: force 2 decimal places, then add thousand separators only when `abs(value) >= 1000` (otherwise passed through unchanged).
+5. Write a signed `<stem>.txt` for consolidate (new file, mode `0o644`) or rewrite the input in place for re-tally (existing file, mode preserved).
+
+### web
+
+1. Reject an empty/whitespace-only query before building any request.
+2. Build the alphabetically-sorted, form-urlencoded DuckDuckGo query URL and send it through a timeout-aware HTTPS transport (a local, injectable variant of `pman`'s pattern, since `pman.rs`'s own transport has no configurable timeout and is outside this utility's file scope).
+3. Scrape `.result`/`.result__title a`/`.result__url`/`.result__snippet` via `scraper`, decoding each result's DuckDuckGo redirect-wrapper link.
+4. `-j` prints the results as JSON and returns; otherwise print a numbered list, or (`--open N`) open the Nth result's link via an injectable `BrowserOpener` (the default system opener, or a `-b`/`--browser`-specified command).
+5. Apply the documented timeout/User-Agent/Referrer defaults whenever the corresponding flag and environment variable are both absent — deliberately diverging from Go, whose real behavior silently sent no timeout and empty headers in that case despite documenting the same defaults.
+
+### cash5
+
+1. Load cached draws from `$XDG_STATE_HOME/cash5/draws.json` (migrating a legacy `$XDG_CONFIG_HOME/cash5/draws.json` on first use) and prune pre-2014-09-14 (1-40-pool-era) rows, rewriting the file atomically only when something was pruned.
+2. On the default (no-flag) path, check connectivity via an injectable seam, then page through the primary NJ Lottery API for missing recent draws (year-long windows, 5x retry with backoff on a transient 500) — falling back to a `scraper`-based `lottonumbers.com` HTML scrape only on a primary 404.
+3. Display the last 10 draws, the current jackpot (live fetch with a cached-estimate fallback), the last winning numbers with any repeat history, and the closest prior 3+-number matches — all dates rendered in Eastern Time via a hand-rolled US-DST rule (valid for the entire post-2014-09-14 data range), not the operator's OS-local timezone.
+4. Generate 5 recommendations (most/least common by position, most frequent overall, hot last-30-days, consecutive-pair avoidance), each guaranteed absent from the full historical-winners set via a deterministic swap/lexicographic-search fallback chain.
+5. `-s`/`--stats`, `-m [N]`/`--match-analysis`, and `-o [N]` render statistics (chi-squared uniformity, birthday-paradox duplicates), match/pattern analysis, and an odds/EV table respectively; `-o`/`-m`'s optional-value parsing runs before general flag dispatch, matching Go's cobra-can't-do-optional-values pre-parse hack. `-v`/`--version` prints only the version, diverging from Go's full-usage-screen `-v`, matching the `mdview`/`retotal` fix.
+6. In an iTerm2 session (an injectable `TerminalCapability` seam, not a bare env read, so `run_daily`'s and `display_match_analysis`'s existing stdout-content tests stay deterministic), render the "winning circle" — numbers 1-45 around a ring, winners spoked and highlighted — via hand-plotted pixels on a raw RGBA buffer (`ab_glyph` for glyph rasterization, `png` for encoding, no canvas-drawing crate), then emit it as an iTerm2 inline image. One emission in the daily summary (last winning numbers); one per displayed draw in match analysis (governed by `-m N` exactly, no independent cap, matching Go).
+
 ## Architecture Notes
 
-- Use the Rust standard library for general behavior, pinned `serde_json = 1.0.145` for vjoin ffprobe parsing, and pinned vendored `openssl = 0.10.73` (with `openssl-src = 300.6.1+3.6.3`) for certificate and TLS operations; do not add another dependency without an approved AC.
-- Implement AC24 filesystem, Gregorian-date, terminal, and CSI-SGR behavior with the Rust standard library and internal helpers; do not add a runtime dependency for these utilities.
-- Implement AC25 external-command, randomness, and HTTP behavior with the Rust standard library plus the already-pinned `openssl` crate (CSPRNG for `pgen`, TLS for `pman`'s hand-rolled HTTP/1.1 client); do not add a runtime dependency for these utilities.
+- Match each utility's functional behavior to its Go source — not the specific libraries, library names, or standard-library coverage Go happened to use for it; a Go stdlib package implies neither a required nor a forbidden Rust dependency. Add a dependency only when it is necessary to reach that functional behavior, and only via an approved AC. Currently approved: pinned `serde_json = 1.0.145` for vjoin ffprobe parsing, and pinned vendored `openssl = 0.10.73` (with `openssl-src = 300.6.1+3.6.3`) for certificate and TLS operations. Use the Rust standard library everywhere else.
+- Implement `bak`, `days`, and `decolor` filesystem, Gregorian-date, terminal, and CSI-SGR behavior with the Rust standard library and internal helpers; do not add a runtime dependency for these utilities.
+- Implement `pgen` and `pman` external-command, randomness, and HTTP behavior with the Rust standard library plus the already-pinned `openssl` crate (CSPRNG for `pgen`, TLS for `pman`'s hand-rolled HTTP/1.1 client); do not add a runtime dependency for these utilities.
+- Implement `fr`'s regex search/replace with the pinned `regex` crate — the repo's first pattern-matching dependency, added because no reasonable standard-library substitute exists for RE2-derived matching. Implement `sms`'s HTTP POST and INI parsing with the Rust standard library plus the already-pinned `pman` `HttpTransport`/`TcpHttpTransport`; add no HTTP or INI dependency for `sms`.
+- Implement `jy`'s YAML parsing, serialization, and token-level scanning with the pinned `yaml-rust2` crate (chosen over `saphyr` specifically because its `scanner` module exposes token type and position data that `saphyr-parser`'s event-only API does not); reuse the already-pinned `serde_json` for the JSON side, adding no second JSON dependency.
+- Implement `mdview`'s GFM rendering with the pinned `comrak` crate, chosen specifically because its default-safe rendering (`render.unsafe` left `false`, `tagfilter` extension enabled) reproduces the Go original's `goldmark` default sanitization byte-for-byte on the `<!-- raw HTML omitted -->` placeholder; reuse the already-pinned `openssl` crate's SHA-256 for the embedded-stylesheet checksum, adding no hashing dependency.
+- Implement `retotal`'s CSV parsing by hand (no dependency; the tested feature surface — quoted fields containing commas, no multi-line fields — is bounded); reuse the already-pinned `regex` crate for its two small patterns, adding no new dependency.
+- Implement `web`'s HTML scraping with the pinned `scraper` crate — the direct Rust analog of Go's `goquery`, no simpler stdlib-only substitute exists for parsing a live third-party site's markup. `web`'s interactive fuzzy-finder picker is deferred to `governa/ac35-web-picker.md`; `--open N` stands in for it in this AC.
+- Implement `cash5`'s backup HTML scraping by reusing the already-pinned `scraper` crate (no new dependency) and its primary/backup HTTPS transport by reusing the already-pinned `openssl` crate's macOS-keychain trust-store fix first proven necessary for `web`. Implement `cash5`'s iTerm2 "winning circle" image rendering with the pinned `ab_glyph` (pure-Rust glyph rasterization) and `png` (encoding, real DEFLATE compression) crates — no `image`/`imageproc` dependency, since pixel plotting is hand-rolled directly on a raw RGBA buffer, matching the Go original's own approach.
 - Keep the public library surface limited to package-binary run, output, and
   error boundaries.
 - Accept valid UTF-8 filenames and fail explicitly on unsupported names.
