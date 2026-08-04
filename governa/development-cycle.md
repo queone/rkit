@@ -4,15 +4,18 @@ This repo uses an acceptance-criteria-first workflow.
 
 ## AC Workflow
 
-- Follow the four phases in order: Scan, Shape, Forge, and Ratify.
+- Follow the lifecycle `Draft → Audit → Refine → Implement → Ratify → Package`.
+- Treat standalone `Draft` or `draft` as the Director-authorized pre-cycle action that creates the active AC; Draft is not an AC phase.
+- Treat standalone `Audit` or `audit` as the adversarial-review phase action that starts the active AC cycle.
+- Treat standalone `Refine` or `refine` as the scope-and-decision-resolution phase action.
+- Treat standalone `Implement` or `implement` as the implementation-and-verification phase action.
+- Treat standalone `Ratify` or `ratify` as the Director acceptance phase action.
+- Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent post-Ratify release-preparation actions; do not infer Package from Ratify acceptance.
 - Start a cycle only when the director identifies the active AC and explicitly
-  requests Scan.
+  requests Audit.
 - Use an unnumbered phase instruction when one AC is under `governa/`; require
   the AC number when multiple ACs are present.
-- Pause after each phase until the director explicitly advances the active AC.
-- Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent
-  post-Ratify release-preparation requests; do not infer Package from Ratify
-  acceptance.
+- Pause after each lifecycle action until the director explicitly advances the active AC.
 
 ## Required Artifacts
 
@@ -26,13 +29,11 @@ This repo uses an acceptance-criteria-first workflow.
 
 1. **Choose the next approved item.** Origination is either (a) an `Ideas To Explore` entry promoted after the director rubric-clears it, or (b) director-originated work (governance, adoption, hotfix, refinement). ACs are the single execution surface — draft directly when authorized.
 2. **Draft an acceptance-criteria doc.** Start from `governa/ac-template.md` (see preamble for the monotonic-numbering rule); save as `governa/ac<N>-<slug>.md`.
-3. **Review and tighten scope before implementation.** The director flags scope concerns in chat; the Operator addresses each by editing the AC file before treating it as implementation-ready. The AC is implementation-ready only after the director's explicit confirmation. See `AGENTS.md` AC Critique Gate.
-4. **Implement code, tests, and direct doc updates together.**
-5. **Capture decisions in durable docs or code when the AC is complete.** The AC file is removed during release prep (see `governa/build-release.md` Pre-Release Checklist).
-6. **Run the build and validation flow.** See `governa/build-release.md`.
-7. **Perform Package only when explicitly requested.** Accept standalone
-   `Package`, `package`, `pack`, or `prep` in the active Ratified AC context;
-   follow `build-release.md` for the existing checklist and implementation.
+3. **Audit the draft.** Challenge the AC, repository behavior, referenced documentation, scope, edge cases, omissions, and testability without editing the AC or repository. Pause for explicit Director advancement to Refine.
+4. **Refine the AC.** Resolve Audit findings and settle Director decisions by editing the AC. Pause when a decision remains unresolved; treat the AC as implementation-ready only after explicit Director confirmation to Implement.
+5. **Implement the settled scope.** Implement code, tests, and direct doc updates together; run validation, adversarial verification, defect correction, and the closure audit. Pause for Ratify.
+6. **Ratify the delivered AC.** The Director reviews and accepts the delivered work; return contract or scope feedback to Refine and implementation-only feedback to Implement.
+7. **Perform Package only when explicitly requested.** Accept standalone `Package`, `package`, `pack`, or `prep` only after Ratify acceptance; follow `governa/build-release.md` for the existing checklist and implementation.
 
 ## Notes
 

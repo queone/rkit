@@ -36,6 +36,12 @@ List things the AC explicitly does **not** do. This is as important as the In Sc
 - Adjacent improvements that would be tempting but are not required
 - Things that look in scope but aren't (called out to prevent confusion)
 
+## Migration findings
+
+- Record each `migration-required` item emitted by drift-scan under `## In Scope`.
+- State the explicit consumer action that completes each migration item.
+- Keep automatic migration or deletion out of scope unless this AC explicitly authorizes it.
+
 ## Acceptance Tests
 
 Every AT carries a source axis and a timing axis.

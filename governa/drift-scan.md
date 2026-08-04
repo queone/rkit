@@ -15,25 +15,32 @@ The tool is consumer-run. Install the binary (`go install github.com/queone/gove
 
 ## Flavor and stack selection
 
-Adopted repositories carry the authoritative flavor in
-`governa/repo-type.txt`, containing exactly `CODE` or `DOC` followed by a
-newline. Drift-scan reads this marker before any repo-shape inference. The
-resolved report header identifies the flavor source as `marker`, `explicit`,
-or `fallback`.
+Adopted repositories carry the authoritative default flavor in
+`governa/metadata.txt`, containing the strict `schema_version = 1` record,
+the canon `governa_version`, `repo_type`, and (for CODE) `code_stack`.
+Drift-scan reads metadata before legacy compatibility or repo-shape inference.
+The resolved report header identifies the flavor source as `metadata`,
+`marker`, `explicit`, or `fallback` and reports the adopted canon version and
+descriptive CODE stack when present.
 
-An explicit `--flavor code|doc` selector overrides the marker intentionally.
-An invalid marker is an error even when an explicit selector is supplied, so a
-corrupt marker cannot remain hidden.
+An explicit `--flavor code|doc` selector overrides valid metadata intentionally.
+Malformed metadata is an error even when an explicit selector is supplied, so
+a corrupt record cannot remain hidden. If metadata and the legacy marker
+disagree, drift-scan fails closed before emission.
 
-When the marker is absent and no explicit selector is supplied, fallback
-resolution uses these exact signals:
+During the compatibility window, an exact legacy `governa/repo-type.txt`
+containing `CODE` or `DOC` followed by a newline remains readable. It is
+reported as `migration-required`; drift-scan never rewrites or deletes it.
+
+When metadata and the legacy marker are absent and no explicit selector is
+supplied, fallback resolution uses these exact signals:
 
 - `go.mod`, `Cargo.toml`, `Package.swift`, `.terraform.lock.hcl`, or a root
   `*.tf` file selects CODE.
 - `_config.yml` alone selects DOC.
 - `_config.yml` together with a strong CODE signal is a conflict and fails
   with recovery guidance.
-- No recognized signal fails closed and asks for `--flavor` or the marker.
+- No recognized signal fails closed and asks for `--flavor` or metadata.
 
 Use `-s, --stack <name>` to select CODE canon when the consumer has no stack
 manifest yet:
@@ -46,10 +53,15 @@ Explicit `--stack` overrides stack-manifest inference and applies only to CODE.
 It does not imply CODE; when flavor resolves to DOC, remove `--stack` or add `--flavor code`. When CODE flavor is selected without a recognized stack
 manifest, pass `-s, --stack <name>`.
 
-New `governa apply` output includes the marker. Without the marker, use fallback resolution; drift-scan surfaces the missing marker as the normal
-`missing-in-target` AC item and never writes it directly.
+New `governa apply` output includes metadata and never deletes a legacy marker.
+Without valid metadata, drift-scan emits a dedicated `migration-required`
+finding whenever explicit selection or fallback resolves the flavor. It never
+writes metadata or deletes the legacy marker directly.
 
-Stack names remain free-form. First-class names such as `Go`, `Rust`, `Terraform`, and `Swift` select their stack overlays; another non-empty name selects generic CODE canon.
+CODE metadata normalizes `code_stack` to one of `Go`, `Rust`, `Swift`,
+`Terraform`, `Node`, `Python`, or `Java`. Recognized manifest inference remains
+authoritative when available; explicit `--stack` overrides inference. The
+descriptive metadata stack is used only when no manifest resolves a stack.
 
 ## What the tool emits
 
@@ -59,7 +71,7 @@ One file under the consumer repo's `governa/`, plus a single-line stdout summary
 
 - H1 title: `# AC<N> Drift-Scan Adoption from governa v<X.Y.Z>`.
 - Opening one-sentence summary of the canon delta.
-- `## Summary` — concise paragraph describing the classifications surfaced; names the canon version being adopted (`governa @ v<X.Y.Z>`) and notes that the AC is part of the recurring drift-scan cycle; points adopters at `governa render-canon` plus `diff -ru` for per-file inspection (see `AGENTS.md` `### Drift-Scan Adoption`). Code-flavor consumers also see the reachability gate sentence inside this section. Any `ambiguity` or `target-has-no-canon` items surface here under a `### Routing Decisions` subheading — one numbered item per file, phrased as the decision-surface question, awaiting the Director's chat-mode resolution before implementation.
+- `## Summary` — concise paragraph describing the classifications surfaced; names the canon version being adopted (`governa @ v<X.Y.Z>`) and notes that the AC is part of the recurring drift-scan cycle; points adopters at `governa render-canon` plus `diff -ru` for per-file inspection (see `AGENTS.md` `### Drift-Scan Adoption`). Code-flavor consumers also see the reachability gate sentence inside this section. Any `ambiguity`, `target-has-no-canon`, or `migration-required` items surface here under their dedicated subsection, with explicit recovery guidance before implementation.
 - `## In Scope` — `clear-sync` and non-empty `missing-in-target` entries listed with classification and any format-defining annotation.
 - `## Out Of Scope` — `preserve` (with marker citation) and `expected-divergence` entries.
 - `## Acceptance Tests` — one byte-equality AT per `clear-sync` item (canon-zone byte-equality for mixed-content sync items; see `## Mixed-content classification`), an AT for the canon-coherence precondition pass, and a final re-run verification AT confirming the next `governa drift-scan` emission omits the synced files from its `## In Scope` list.
@@ -102,6 +114,7 @@ The tool emits one of the classifications below for every file. The Operator can
 - **`ambiguity`** — local commits exist for this file (`git log -n 5 --follow` returned ≥ 1 commit) but no preserve marker was found. Routed to `### Routing Decisions` under `## Summary` as a numbered routing question. Format-defining files (see `## Format-defining files`) are an exception: they are hard-routed to sync regardless of classification.
 - **`clear-sync`** — divergent with neither local commits nor preserve marker. Routed to `## In Scope` as `sync to canon`.
 - **`missing-in-target`** — canon ships the file; target does not. If canon is non-empty, routed to `## In Scope` as `create from canon`. If canon is empty, surfaced as an informational note only.
+- **`migration-required`** — adopted metadata is absent or a legacy `governa/repo-type.txt` remains after canon retirement. Surface the exact affected path under `### Migration Required` and route it into `## In Scope` for explicit consumer migration; drift-scan never mutates the path directly.
 - **`target-has-no-canon`** — file exists in cwd, NOT in canon for this flavor. Two branches surface a file under this classification:
   - **Cross-flavor branch:** the file exists in the OTHER flavor's canon. Possible flavor mismatch.
   - **Name-reference branch:** the file exists in cwd only (no canon counterpart in either flavor) but is name-referenced from a divergent target file (e.g., `rel.sh` references `./cmd/rel/color.go` and color.go has no canon presence).

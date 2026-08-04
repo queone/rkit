@@ -11,6 +11,16 @@ What governa commits to when shipping canon updates:
 3. **Breaking-change protocol.** Removals or shape changes that would clobber a consumer's existing extensions ship as MINOR with a CHANGELOG note flagging the consumer-side migration cost.
 4. **drift-scan as the alerting surface.** drift-scan is governa's tool for surfacing canon updates to consumers. The canon-coherence precondition runs canon-only; consumers running drift-scan against a non-coherent canon get a hard-fail report routed to the governa maintainer.
 
+## Metadata and retired routing marker
+
+- Treat `governa/metadata.txt` as the authoritative consumer identity record.
+- Require `schema_version`, `governa_version`, and `repo_type`; require `code_stack` only for CODE consumers.
+- Accept the exact `governa/repo-type.txt` CODE/DOC marker only during the compatibility window.
+- Reject conflicting metadata and legacy-marker repo types before emitting an adoption AC.
+- Write metadata during apply and leave any legacy marker in place for drift-scan migration reporting.
+- Surface missing metadata and retained legacy markers as `migration-required` items during drift-scan.
+- Migrate metadata explicitly in the emitted AC; do not delete legacy markers automatically.
+
 ## Consumer-side workflow
 
 What consumers do when receiving canon updates:

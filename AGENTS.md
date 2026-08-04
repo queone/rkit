@@ -78,6 +78,17 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Treat an explicit standalone `Package`, `package`, `pack`, or `prep` request in an active Ratified AC context as the trigger for release-prep bookkeeping (CHANGELOG row insertion, release-tag drafting, commit-command drafting, release-command presentation).
 - Follow the Pre-Release Checklist in `governa/build-release.md` when executing release-prep bookkeeping.
 
+### Delegation and sub-agent use
+
+- Make inline work the default for every AC phase and implementation task.
+- Do not spawn or delegate to sub-agents without explicit Director authorization for the active AC.
+- State the inline constraint, proposed bounded task split, agent count, and token/time tradeoff before requesting delegation.
+- Ask the Director to narrow the task or split the AC before proposing delegation when the task exceeds practical inline capacity.
+- Limit authorized delegation to the active AC's named scope and prevent recursive or unbounded sub-agent spawning.
+- Treat tool availability, time pressure, and task size alone as insufficient delegation authorization.
+- Keep primary-agent ownership of integration, validation, adversarial verification, and closure reporting.
+- Distinguish parallel shell commands from sub-agent spawning; this rule does not prohibit batching independent commands.
+
 ### AC-First Workflow
 
 - Treat every non-trivial change as AC-first work.
@@ -86,19 +97,21 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 
 ### Four-Phase Workflow
 
-- Start each governed AC cycle in Scan when the AC is ready for adversarial review.
-- Challenge the AC, repository behavior, referenced documentation, scope, edge cases, omissions, and testability during Scan.
-- Keep Scan non-mutating; do not edit the AC or repository during Scan.
-- Pause after Scan and await explicit Director instruction to Shape.
-- Resolve Scan findings and incorporate settled Director decisions during Shape.
-- Pause Shape when a Director-specific decision remains unresolved.
-- Edit the AC during Shape; do not begin implementation during Shape.
-- Pause after Shape and await explicit Director implementation-ready confirmation to Forge.
-- Implement only the settled AC scope during Forge.
-- Return to Shape when Forge reveals a contract, scope, or Director decision change.
-- Return to Forge when Forge reveals an implementation-only correction.
-- Include tests, adversarial verification, and defect correction in Forge.
-- Run one exhaustive, non-mutating closure audit after Forge implementation, validation, adversarial verification, and defect correction.
+- Follow the lifecycle `Draft → Audit → Refine → Implement → Ratify → Package` for every governed AC.
+- Treat standalone `Draft` or `draft` as the Director-authorized pre-cycle action that creates the active AC; Draft is not an AC phase.
+- Start each governed AC cycle in Audit when the AC is ready for adversarial review.
+- Challenge the AC, repository behavior, referenced documentation, scope, edge cases, omissions, and testability during Audit.
+- Keep Audit non-mutating; do not edit the AC or repository during Audit.
+- Pause after Audit and await explicit Director instruction to Refine.
+- Resolve Audit findings and incorporate settled Director decisions during Refine.
+- Pause Refine when a Director-specific decision remains unresolved.
+- Edit the AC during Refine; do not begin implementation during Refine.
+- Pause after Refine and await explicit Director implementation-ready confirmation to Implement.
+- Implement only the settled AC scope during Implement.
+- Return to Refine when Implement reveals a contract, scope, or Director decision change.
+- Return to Implement when Implement reveals an implementation-only correction.
+- Include tests, adversarial verification, and defect correction in Implement.
+- Run one exhaustive, non-mutating closure audit after Implement, validation, adversarial verification, and defect correction.
 - Keep the closure-audit working record in the active agent's session.
 - Do not create a separate closure-audit artifact.
 - Map every in-scope command entry point, provider/API fetch, normalized-table write, durable snapshot, stale fallback, freshness gate, and complete-snapshot reconciliation path in the closure audit.
@@ -107,17 +120,17 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Compare every discovered path with the active AC `## In Scope`, `## Out Of Scope`, and `## Acceptance Tests` sections.
 - Record `Not applicable` with repository evidence when a path category is absent.
 - Record every acceptance-test disposition and residual risk in the closure audit.
-- Block Forge completion when any required implementation path is unmapped or unverified or any implementation finding remains open.
-- Record pending Director review for manual acceptance tests without treating that pending review as an implementation finding or a Forge-blocking path gap.
-- Return to Forge for implementation defects found by the closure audit.
-- Return to Shape for scope, contract, or Director decision changes found by the closure audit.
-- Report every acceptance-test disposition in the Forge completion report.
-- Report every residual risk in the Forge completion report.
-- State zero unresolved implementation findings in the Forge completion report before Ratify.
-- Pause after Forge and await Ratify.
+- Block Implement completion when any required implementation path is unmapped or unverified or any implementation finding remains open.
+- Record pending Director review for manual acceptance tests without treating that pending review as an implementation finding or a path gap that blocks Implement completion.
+- Return to Implement for implementation defects found by the closure audit.
+- Return to Refine for scope, contract, or Director decision changes found by the closure audit.
+- Report every acceptance-test disposition in the Implement completion report.
+- Report every residual risk in the Implement completion report.
+- State zero unresolved implementation findings in the Implement completion report before Ratify.
+- Pause after Implement and await Ratify.
 - Treat Ratify as the Director's final review of the delivered AC.
-- Return Ratify feedback to Shape for contract or scope changes.
-- Return Ratify feedback to Forge for implementation-only corrections.
+- Return Ratify feedback to Refine for contract or scope changes.
+- Return Ratify feedback to Implement for implementation-only corrections.
 - Keep Ratify complete only after the Director accepts the delivered work.
 - Treat `Package` as the separate post-Ratify name for release preparation, not as a fifth AC phase.
 - Start `Package` only after an explicit Director request; do not infer it from Ratify acceptance.
@@ -126,18 +139,19 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 
 ### Phase-Advancement Rules
 
-- Treat only explicit Director phase-advancement language as authorization to enter the named next phase.
-- Start an AC cycle only when the Director identifies the active AC and explicitly requests Scan.
-- Apply an unnumbered phase instruction to the sole AC under `governa/`; require the AC number when multiple ACs are present.
-- Treat a compound request as authorization for only the named phase.
-- Pause before entering any phase not explicitly named by the Director.
+- Treat only explicit Director action language as authorization to enter the named next action.
+- Treat standalone `Draft` or `draft` as the pre-cycle action that creates the active AC; require the Director to authorize it before creating the AC.
+- Start an AC cycle only when the Director identifies the active AC and explicitly requests Audit.
+- Apply an unnumbered action instruction to the sole AC under `governa/`; require the AC number when multiple ACs are present.
+- Treat a compound request as authorization for only the named action.
+- Pause before entering any action not explicitly named by the Director.
 - Treat ambiguous, unrelated, or implicit replies as non-advancing feedback.
-- Interpret Scan, Shape, Forge, and Ratify as workflow phases only in the context of the active AC cycle.
+- Interpret Audit, Refine, Implement, and Ratify as workflow phases only in the context of the active AC cycle.
 - Interpret `Package` as the post-Ratify release-preparation action only after Ratify acceptance and an explicit Director request.
 - Interpret standalone `Package`, `package`, `pack`, and `prep` as equivalent Package instructions only in that context.
 - Do not interpret `run ./build.sh prep ...`, `pack the binary`, `prepare the build`, or non-standalone `prep` as workflow advancement.
 - Treat ordinary coding language such as `build`, `package the binary`, or a package-manager command as unrelated to phase advancement.
-- Require explicit operational wording such as `run ./build.sh` before executing a repository command; never infer a shell command from a phase name.
+- Require explicit operational wording such as `run ./build.sh` before executing a repository command; never infer a shell command from an action name.
 
 ### Primary And Ancillary Scope
 
