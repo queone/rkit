@@ -84,7 +84,8 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Do not spawn or delegate to sub-agents without explicit Director authorization for the active AC.
 - State the inline constraint, proposed bounded task split, agent count, and token/time tradeoff before requesting delegation.
 - Ask the Director to narrow the task or split the AC before proposing delegation when the task exceeds practical inline capacity.
-- Limit authorized delegation to the active AC's named scope and prevent recursive or unbounded sub-agent spawning.
+- Limit authorized delegation to the active AC's named scope.
+- Prevent recursive or unbounded sub-agent spawning.
 - Treat tool availability, time pressure, and task size alone as insufficient delegation authorization.
 - Keep primary-agent ownership of integration, validation, adversarial verification, and closure reporting.
 - Distinguish parallel shell commands from sub-agent spawning; this rule does not prohibit batching independent commands.
