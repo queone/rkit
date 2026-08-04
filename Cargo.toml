@@ -1,7 +1,12 @@
 [package]
 name = "rkit"
-version = "1.10.0"
+version = "1.11.0"
 edition = "2024"
+
+[dependencies]
+# Pin and vendor OpenSSL for self-contained RSA, X.509, and verified TLS parity.
+openssl = { version = "=0.10.73", features = ["vendored"] }
+serde_json = "=1.0.145"
 
 [lib]
 path = "src/lib.rs"
@@ -21,3 +26,59 @@ path = "src/bin/brew-update.rs"
 [[bin]]
 name = "repoctl"
 path = "src/bin/repoctl.rs"
+
+[[bin]]
+name = "certgen"
+path = "src/bin/certgen.rs"
+
+[[bin]]
+name = "certls"
+path = "src/bin/certls.rs"
+
+[[bin]]
+name = "rn"
+path = "src/bin/rn.rs"
+
+[[bin]]
+name = "rncap"
+path = "src/bin/rncap.rs"
+
+[[bin]]
+name = "rnlower"
+path = "src/bin/rnlower.rs"
+
+[[bin]]
+name = "vdrop"
+path = "src/bin/vdrop.rs"
+
+[[bin]]
+name = "vjoin"
+path = "src/bin/vjoin.rs"
+
+[[bin]]
+name = "vkeep"
+path = "src/bin/vkeep.rs"
+
+[[bin]]
+name = "bak"
+path = "src/bin/bak.rs"
+
+[[bin]]
+name = "days"
+path = "src/bin/days.rs"
+
+[[bin]]
+name = "decolor"
+path = "src/bin/decolor.rs"
+
+[[bin]]
+name = "dl"
+path = "src/bin/dl.rs"
+
+[[bin]]
+name = "pgen"
+path = "src/bin/pgen.rs"
+
+[[bin]]
+name = "pman"
+path = "src/bin/pman.rs"

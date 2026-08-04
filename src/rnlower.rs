@@ -1,0 +1,144 @@
+//! Interactive Unicode lowercasing of every directory entry name.
+
+use std::ffi::{OsStr, OsString};
+use std::fs;
+use std::io::{BufRead, Write};
+
+const PROGRAM_NAME: &str = "rnlower";
+
+/// Run rnlower with injectable streams.
+pub fn run<I, S, R, W, E>(
+    args: I,
+    version: &str,
+    input: &mut R,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> u8
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+    R: BufRead,
+    W: Write,
+    E: Write,
+{
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    if args.len() == 1 && matches!(args[0].to_str(), Some("-v" | "--version")) {
+        let _ = writeln!(stdout, "{PROGRAM_NAME} v{version}");
+        return 0;
+    }
+
+    let _ = write!(stdout, "Rename ALL filenames in CWD to lowercase? Y/N ");
+    if let Err(error) = stdout.flush() {
+        return fail(stderr, "flush confirmation prompt", error.to_string());
+    }
+    let mut response = String::new();
+    let _ = input.read_line(&mut response);
+    if !matches!(response.trim(), "Y" | "y") {
+        let _ = writeln!(stdout, "\nAborted.");
+        return 1;
+    }
+    let _ = writeln!(stdout);
+
+    let mut entries = match fs::read_dir(".") {
+        Ok(entries) => entries.flatten().collect::<Vec<_>>(),
+        Err(error) => return fail(stderr, "read directory", error.to_string()),
+    };
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let old_name = entry.file_name();
+        let new_name = lower_name(&old_name);
+        if new_name == old_name {
+            continue;
+        }
+        if fs::metadata(&new_name).is_ok() {
+            let _ = writeln!(stderr, "skipped (exists): {}", display(&new_name));
+            continue;
+        }
+        if let Err(error) = fs::rename(&old_name, &new_name) {
+            let _ = writeln!(
+                stderr,
+                "rename failed: {} -> {} ({error})",
+                display(&old_name),
+                display(&new_name)
+            );
+            continue;
+        }
+        let _ = writeln!(
+            stdout,
+            "'{}' -> '{}'",
+            display(&old_name),
+            display(&new_name)
+        );
+    }
+    let _ = writeln!(stdout);
+    0
+}
+
+fn display(name: &OsStr) -> String {
+    name.to_string_lossy().into_owned()
+}
+
+fn lower_name(name: &OsStr) -> OsString {
+    OsString::from(name.to_string_lossy().to_lowercase())
+}
+
+fn fail(stderr: &mut impl Write, operation: &str, error: String) -> u8 {
+    let _ = writeln!(stderr, "error: {operation}: {error}");
+    1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{lower_name, run};
+    use std::ffi::OsStr;
+    use std::io::{Cursor, Write};
+
+    struct FlushWriter {
+        bytes: Vec<u8>,
+        flushes: usize,
+    }
+
+    impl Write for FlushWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes += 1;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn flushes_prompt_before_reading_confirmation() {
+        let mut input = Cursor::new(b"N\n".to_vec());
+        let mut stdout = FlushWriter {
+            bytes: Vec::new(),
+            flushes: 0,
+        };
+        let mut stderr = Vec::new();
+        assert_eq!(
+            run(
+                Vec::<&str>::new(),
+                "2.0.0",
+                &mut input,
+                &mut stdout,
+                &mut stderr,
+            ),
+            1
+        );
+        assert_eq!(stdout.flushes, 1);
+        assert!(
+            stdout
+                .bytes
+                .starts_with(b"Rename ALL filenames in CWD to lowercase? Y/N ")
+        );
+    }
+
+    #[test]
+    fn lowercases_unicode_names() {
+        assert_eq!(lower_name(OsStr::new("ÉLAN.CAFÉ")), "élan.café");
+    }
+}
