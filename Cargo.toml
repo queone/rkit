@@ -1,6 +1,6 @@
 [package]
 name = "rkit"
-version = "1.12.0"
+version = "1.13.0"
 edition = "2024"
 
 [dependencies]
@@ -23,6 +23,10 @@ scraper = "=0.27.0"
 # plotting is hand-rolled directly, matching the Go original's approach.
 ab_glyph = "=0.2.32"
 png = "=0.18.1"
+# Pin nucleo-picker for web's interactive result picker: far lighter than
+# skim (52 resolved packages vs. 238; no tokio/ratatui), at the cost of no
+# built-in split preview pane -- see governa/ac35-web-picker.md.
+nucleo-picker = "=0.11.1"
 
 [lib]
 path = "src/lib.rs"

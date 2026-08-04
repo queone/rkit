@@ -1,23 +1,32 @@
 //! DuckDuckGo search, HTML-result scraping, and browser-opening behavior
 //! for the `web` utility.
 //!
-//! The interactive fuzzy-finder picker Go embeds (`go-fzf`) is deferred to
-//! a follow-up AC; this port replaces it with `--open N` (open the Nth
-//! result by 1-based index) plus a numbered-list default mode.
+//! The default (non-`-j`, non-`--open`) path opens an interactive
+//! fuzzy-finder picker via `nucleo-picker` when stdout/stdin are real
+//! terminals, matching Go's unconditional `go-fzf` picker but with a
+//! single-line title+snippet row in place of Go's split preview pane (see
+//! `governa/ac35-web-picker.md`). A piped/scripted invocation falls back
+//! to the numbered-list default instead, since an interactive picker
+//! can't run there regardless of crate choice.
 
 use crate::mdview::BrowserOpener;
 use crate::pman::{HttpRequest, HttpResponse, HttpTransport};
+use nucleo_picker::{Picker, Render};
 use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslVerifyMode};
 use openssl::x509::X509;
 use scraper::{Html, Selector};
 use serde_json::{Map, Value};
 use std::env;
 use std::ffi::OsString;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
+
+/// Display rows are truncated to this many characters of snippet text
+/// (after collapsing whitespace) to keep each picker row to one line.
+const SNIPPET_DISPLAY_CHARS: usize = 80;
 
 const PROGRAM_NAME: &str = "web";
 const DEFAULT_REFERRER: &str = "https://google.com";
@@ -67,6 +76,68 @@ impl BrowserOpener for CommandOpener {
                 self.command
             )))
         }
+    }
+}
+
+/// Drives an interactive result picker; injectable so no test drives a
+/// real interactive terminal session.
+pub trait ResultPicker {
+    /// Returns the selected result, or `None` when the user cancelled
+    /// without selecting (matching Go's silent-return-on-empty-selection
+    /// behavior).
+    fn pick(&self, results: &[SearchResult]) -> io::Result<Option<SearchResult>>;
+}
+
+/// Renders each result as a single `<title>  <truncated snippet>` line —
+/// `nucleo-picker`'s `Render` trait has no split-preview-pane mechanism
+/// (confirmed against its docs during this AC's Refine), unlike Go's
+/// `go-fzf` `WithPreviewWindow`. Fuzzy matching runs against this same
+/// rendered string, so unlike Go (title-only matching) the snippet text is
+/// also searchable — a disclosed, low-stakes side effect of the row format
+/// choice, not a separate decision.
+struct ResultRenderer;
+
+impl Render<SearchResult> for ResultRenderer {
+    type Str<'a> = String;
+
+    fn render(&self, value: &SearchResult) -> String {
+        format!(
+            "{}  {}",
+            value.title,
+            truncate_snippet(&value.snippet, SNIPPET_DISPLAY_CHARS)
+        )
+    }
+}
+
+/// Collapses internal whitespace (scraped snippets can contain newlines)
+/// and truncates to `max_chars`, appending an ellipsis when truncated.
+fn truncate_snippet(snippet: &str, max_chars: usize) -> String {
+    let collapsed = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= max_chars {
+        collapsed
+    } else {
+        let truncated: String = collapsed.chars().take(max_chars).collect();
+        format!("{truncated}…")
+    }
+}
+
+/// The real interactive picker, backed by `nucleo-picker`.
+pub struct InteractivePicker;
+
+impl ResultPicker for InteractivePicker {
+    fn pick(&self, results: &[SearchResult]) -> io::Result<Option<SearchResult>> {
+        if results.is_empty() {
+            return Ok(None);
+        }
+        let mut picker = Picker::new(ResultRenderer);
+        let injector = picker.injector();
+        for result in results {
+            injector.push(result.clone());
+        }
+        picker
+            .pick()
+            .map(|selection| selection.cloned())
+            .map_err(io::Error::other)
     }
 }
 
@@ -509,13 +580,17 @@ DuckDuckGo search utility\n\
 Usage\n\
   {PROGRAM_NAME} [options] [query]\n\
 \n\
+  With no -j/--open, opens an interactive fuzzy-finder result picker when\n\
+  stdout is a terminal (Enter opens the selected result, Esc cancels).\n\
+  Falls back to a numbered list when stdout is not a terminal.\n\
+\n\
 Options\n\
   -j, --json         Output results in JSON format\n\
   -t, --timeout      Timeout in seconds (default: 5)\n\
   -u, --user-agent   Custom User-Agent header\n\
   -r, --referrer     Custom Referrer header\n\
   -b, --browser      Browser command to open URLs\n\
-  --open N           Open the Nth result (1-based) instead of listing\n\
+  --open N           Open the Nth result (1-based) instead of the picker\n\
   -v, --version      Show version and exit\n\
   -h, -?, --help     Show this help message and exit\n\
 \n\
@@ -584,21 +659,40 @@ where
         }
     };
 
+    let interactive = io::stdout().is_terminal() && io::stdin().is_terminal();
+
     finish(
         &results,
         parsed.json,
         parsed.open,
         parsed.browser.as_deref(),
+        interactive,
+        &InteractivePicker,
         stdout,
         stderr,
     )
 }
 
-fn finish<W: Write, E: Write>(
+/// Opens `result` via the browser opener the `-b`/`--browser` flag selects
+/// (or the system default), matching Go's `open.Run`/`open.RunWith` split.
+fn open_link(result: &SearchResult, browser: Option<&str>) -> io::Result<()> {
+    match browser {
+        Some(command) => CommandOpener {
+            command: command.to_owned(),
+        }
+        .open(Path::new(&result.link)),
+        None => crate::mdview::SystemOpener.open(Path::new(&result.link)),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish<P: ResultPicker, W: Write, E: Write>(
     results: &[SearchResult],
     json: bool,
     open: Option<usize>,
     browser: Option<&str>,
+    interactive: bool,
+    picker: &P,
     stdout: &mut W,
     stderr: &mut E,
 ) -> u8 {
@@ -607,50 +701,63 @@ fn finish<W: Write, E: Write>(
         return 0;
     }
 
-    let Some(index) = open else {
-        for (position, result) in results.iter().enumerate() {
+    if let Some(index) = open {
+        let Some(result) = results.get(index - 1) else {
             let _ = writeln!(
-                stdout,
-                "{}. {}\n   {}",
-                position + 1,
-                result.title,
-                result.link
+                stderr,
+                "{PROGRAM_NAME}: no result at index {index} ({} result(s) found)",
+                results.len()
             );
-        }
-        return 0;
-    };
-
-    let Some(result) = results.get(index - 1) else {
-        let _ = writeln!(
-            stderr,
-            "{PROGRAM_NAME}: no result at index {index} ({} result(s) found)",
-            results.len()
-        );
-        return 1;
-    };
-
-    let opener_result = match browser {
-        Some(command) => CommandOpener {
-            command: command.to_owned(),
-        }
-        .open(Path::new(&result.link)),
-        None => crate::mdview::SystemOpener.open(Path::new(&result.link)),
-    };
-
-    match opener_result {
-        Ok(()) => {
-            let _ = writeln!(
-                stdout,
-                "Opening [{index}] {}: {}",
-                result.title, result.link
-            );
-            0
-        }
-        Err(error) => {
-            let _ = writeln!(stderr, "{PROGRAM_NAME}: opening browser: {error}");
-            1
-        }
+            return 1;
+        };
+        return match open_link(result, browser) {
+            Ok(()) => {
+                let _ = writeln!(
+                    stdout,
+                    "Opening [{index}] {}: {}",
+                    result.title, result.link
+                );
+                0
+            }
+            Err(error) => {
+                let _ = writeln!(stderr, "{PROGRAM_NAME}: opening browser: {error}");
+                1
+            }
+        };
     }
+
+    if interactive {
+        return match picker.pick(results) {
+            // Matching Go's picker path exactly: open silently, no
+            // confirmation message (unlike the `--open N` path above,
+            // which is this port's own addition, not Go behavior).
+            Ok(Some(result)) => match open_link(&result, browser) {
+                Ok(()) => 0,
+                Err(error) => {
+                    let _ = writeln!(stderr, "{PROGRAM_NAME}: opening browser: {error}");
+                    1
+                }
+            },
+            // Cancelled without selecting: silent success, matching Go's
+            // empty-selection no-op.
+            Ok(None) => 0,
+            Err(error) => {
+                let _ = writeln!(stderr, "{PROGRAM_NAME}: picker: {error}");
+                1
+            }
+        };
+    }
+
+    for (position, result) in results.iter().enumerate() {
+        let _ = writeln!(
+            stdout,
+            "{}. {}\n   {}",
+            position + 1,
+            result.title,
+            result.link
+        );
+    }
+    0
 }
 
 #[cfg(test)]
@@ -766,7 +873,16 @@ mod tests {
         }];
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let code = finish(&results, true, None, None, &mut stdout, &mut stderr);
+        let code = finish(
+            &results,
+            true,
+            None,
+            None,
+            false,
+            &UnusedPicker,
+            &mut stdout,
+            &mut stderr,
+        );
         assert_eq!(code, 0);
         let text = String::from_utf8(stdout).unwrap();
         assert!(text.contains("\"title\":\"Golang Official\""));
@@ -790,7 +906,16 @@ mod tests {
         ];
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let code = finish(&results, false, None, None, &mut stdout, &mut stderr);
+        let code = finish(
+            &results,
+            false,
+            None,
+            None,
+            false,
+            &UnusedPicker,
+            &mut stdout,
+            &mut stderr,
+        );
         assert_eq!(code, 0);
         let text = String::from_utf8(stdout).unwrap();
         assert!(text.contains("1. First"));
@@ -807,7 +932,16 @@ mod tests {
         }];
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let code = finish(&results, false, Some(2), None, &mut stdout, &mut stderr);
+        let code = finish(
+            &results,
+            false,
+            Some(2),
+            None,
+            false,
+            &UnusedPicker,
+            &mut stdout,
+            &mut stderr,
+        );
         assert_eq!(code, 1);
         assert!(stdout.is_empty());
         assert!(
@@ -845,6 +979,8 @@ mod tests {
                 false,
                 Some(1),
                 Some(script.to_str().unwrap()),
+                false,
+                &UnusedPicker,
                 &mut stdout,
                 &mut stderr,
             );
@@ -857,5 +993,120 @@ mod tests {
     #[cfg(unix)]
     fn fs_read(path: &std::path::Path) -> String {
         std::fs::read_to_string(path).unwrap()
+    }
+
+    struct UnusedPicker;
+    impl ResultPicker for UnusedPicker {
+        fn pick(&self, _results: &[SearchResult]) -> io::Result<Option<SearchResult>> {
+            panic!(
+                "picker should not be invoked: json/--open handle the request first, or interactive is false"
+            );
+        }
+    }
+
+    struct FakePicker(Option<usize>);
+    impl ResultPicker for FakePicker {
+        fn pick(&self, results: &[SearchResult]) -> io::Result<Option<SearchResult>> {
+            Ok(self.0.map(|index| results[index].clone()))
+        }
+    }
+
+    fn sample_results() -> Vec<SearchResult> {
+        vec![
+            SearchResult {
+                title: "First".to_owned(),
+                link: "https://first.example".to_owned(),
+                snippet: "the first snippet".to_owned(),
+            },
+            SearchResult {
+                title: "Second".to_owned(),
+                link: "https://second.example".to_owned(),
+                snippet: "the second snippet".to_owned(),
+            },
+        ]
+    }
+
+    #[test]
+    fn interactive_picker_selection_opens_silently_without_confirmation() {
+        let directory =
+            std::env::temp_dir().join(format!("rkit-web-picker-unit-{}", std::process::id()));
+        let _ = std::fs::create_dir(&directory);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let marker = directory.join("opened.txt");
+            let script = directory.join("fake-browser.sh");
+            std::fs::write(
+                &script,
+                format!("#!/bin/sh\necho \"$1\" > {}\n", marker.display()),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+            let results = sample_results();
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let code = finish(
+                &results,
+                false,
+                None,
+                Some(script.to_str().unwrap()),
+                true,
+                &FakePicker(Some(1)),
+                &mut stdout,
+                &mut stderr,
+            );
+            assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+            assert!(
+                stdout.is_empty(),
+                "picker path prints no confirmation, matching Go"
+            );
+            assert_eq!(fs_read(&marker), "https://second.example\n");
+        }
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn interactive_picker_cancel_is_silent_success() {
+        let results = sample_results();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let code = finish(
+            &results,
+            false,
+            None,
+            None,
+            true,
+            &FakePicker(None),
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(code, 0);
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn result_renderer_truncates_long_snippets_onto_one_line() {
+        let long_snippet = "word ".repeat(40);
+        let result = SearchResult {
+            title: "Title".to_owned(),
+            link: "https://example.com".to_owned(),
+            snippet: long_snippet,
+        };
+        let rendered = ResultRenderer.render(&result);
+        assert!(!rendered.contains('\n'));
+        assert!(rendered.starts_with("Title  "));
+        assert!(rendered.chars().count() <= "Title  ".len() + SNIPPET_DISPLAY_CHARS + 1);
+        assert!(rendered.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_snippet_collapses_whitespace_and_marks_truncation() {
+        assert_eq!(truncate_snippet("a  b\nc", 80), "a b c");
+        let long = "x".repeat(100);
+        let truncated = truncate_snippet(&long, 10);
+        assert_eq!(truncated.chars().count(), 11);
+        assert!(truncated.ends_with('…'));
     }
 }

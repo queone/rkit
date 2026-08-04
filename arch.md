@@ -69,7 +69,7 @@ delegated Git clone/pull and repository build operations.
 - `src/mdview.rs`: GFM rendering via `comrak`, `<details>`/`<summary>` disclosure preprocessing, HTML document assembly, and injectable file/browser output
 - `src/github-markdown.css`, `src/github-markdown-css-LICENSE`: embedded, SHA-256-pinned upstream stylesheet and its MIT license
 - `src/retotal.rs`: CSV/aligned parsing, two-stage numeric formatting, signature-gated consolidate/re-tally dispatch
-- `src/web.rs`: DuckDuckGo query building, a timeout-aware HTTPS transport, CSS-selector HTML scraping, JSON output, and browser-opening (reusing `mdview`'s `BrowserOpener`)
+- `src/web.rs`: DuckDuckGo query building, a timeout-aware HTTPS transport, CSS-selector HTML scraping, an injectable interactive result picker (`nucleo-picker`-backed) with a TTY-gated numbered-list fallback, JSON output, and browser-opening (reusing `mdview`'s `BrowserOpener`)
 - `src/cash5/`: NJ Cash 5 draw fetching (primary API plus `scraper`-based `lottonumbers.com` backup), XDG state persistence with legacy-era pruning, a collision-avoiding recommendation engine, statistics, match analysis, an odds table, iTerm2 "winning circle" image rendering, and CLI dispatch — one submodule per Go source-file concern (`api`, `dates`, `display`, `match_analysis`, `model`, `recommend`, `render`, `stats`, `store`, `strategy`)
 - `src/gomono.ttf`, `src/gomono-LICENSE`: embedded, SHA-256-pinned "Go Mono" TrueType font (extracted from `golang.org/x/image/font/gofont/gomono`) and its BSD-3-Clause license
 - `src/color.rs`: shared terminal color policy
@@ -151,9 +151,9 @@ delegated Git clone/pull and repository build operations.
 
 1. Parse the command and discover local repositories, or resolve the owner
    repository list for clone.
-2. Resolve each Origin before operation execution and sort the work by Origin.
+2. Resolve each Origin before operation execution and sort the work by Origin (the untrimmed value, matching Go's behavior — sorting is unaffected by the display trim below).
 3. Complete status and pull operations before rendering their colored Repo,
-   Origin, and result rows, followed only by retained uncolored details.
+   Origin, and result rows, followed only by retained uncolored details. The displayed Origin has a trailing `.git` suffix stripped; the `origin` field itself stays untouched everywhere it's used functionally, including `clone`'s actual `git clone` argument.
 4. Render and flush build and clone processing rows before starting work.
 5. Stream build and clone stdout and stderr as indented details, then render one
    colored indented final status.
@@ -300,7 +300,7 @@ delegated Git clone/pull and repository build operations.
 1. Reject an empty/whitespace-only query before building any request.
 2. Build the alphabetically-sorted, form-urlencoded DuckDuckGo query URL and send it through a timeout-aware HTTPS transport (a local, injectable variant of `pman`'s pattern, since `pman.rs`'s own transport has no configurable timeout and is outside this utility's file scope).
 3. Scrape `.result`/`.result__title a`/`.result__url`/`.result__snippet` via `scraper`, decoding each result's DuckDuckGo redirect-wrapper link.
-4. `-j` prints the results as JSON and returns; otherwise print a numbered list, or (`--open N`) open the Nth result's link via an injectable `BrowserOpener` (the default system opener, or a `-b`/`--browser`-specified command).
+4. `-j` prints the results as JSON and returns; `--open N` opens the Nth result's link directly. Otherwise, when stdout and stdin are both terminals, open an injectable interactive picker (`nucleo-picker`-backed; a single `<title>  <truncated snippet>` line per row, since the crate has no split-preview-pane mechanism) — Enter opens the selected link, Esc/cancel is a silent no-op, matching Go's `go-fzf`-backed picker exactly including the cancel behavior. When not a terminal, fall back to a numbered list instead (`web`'s AC30 default). Every open path routes through an injectable `BrowserOpener` (the default system opener, or a `-b`/`--browser`-specified command).
 5. Apply the documented timeout/User-Agent/Referrer defaults whenever the corresponding flag and environment variable are both absent — deliberately diverging from Go, whose real behavior silently sent no timeout and empty headers in that case despite documenting the same defaults.
 
 ### cash5
@@ -321,7 +321,7 @@ delegated Git clone/pull and repository build operations.
 - Implement `jy`'s YAML parsing, serialization, and token-level scanning with the pinned `yaml-rust2` crate (chosen over `saphyr` specifically because its `scanner` module exposes token type and position data that `saphyr-parser`'s event-only API does not); reuse the already-pinned `serde_json` for the JSON side, adding no second JSON dependency.
 - Implement `mdview`'s GFM rendering with the pinned `comrak` crate, chosen specifically because its default-safe rendering (`render.unsafe` left `false`, `tagfilter` extension enabled) reproduces the Go original's `goldmark` default sanitization byte-for-byte on the `<!-- raw HTML omitted -->` placeholder; reuse the already-pinned `openssl` crate's SHA-256 for the embedded-stylesheet checksum, adding no hashing dependency.
 - Implement `retotal`'s CSV parsing by hand (no dependency; the tested feature surface — quoted fields containing commas, no multi-line fields — is bounded); reuse the already-pinned `regex` crate for its two small patterns, adding no new dependency.
-- Implement `web`'s HTML scraping with the pinned `scraper` crate — the direct Rust analog of Go's `goquery`, no simpler stdlib-only substitute exists for parsing a live third-party site's markup. `web`'s interactive fuzzy-finder picker is deferred to `governa/ac35-web-picker.md`; `--open N` stands in for it in this AC.
+- Implement `web`'s HTML scraping with the pinned `scraper` crate — the direct Rust analog of Go's `goquery`, no simpler stdlib-only substitute exists for parsing a live third-party site's markup. Implement `web`'s interactive result picker with the pinned `nucleo-picker` crate, chosen over `skim` after comparing real dependency trees (52 resolved packages vs. 238, no `tokio`/`ratatui`) — the tradeoff is no built-in split preview pane, so each row renders as a single `<title>  <truncated snippet>` line instead. `--open N` remains available as a non-interactive alternative alongside the picker.
 - Implement `cash5`'s backup HTML scraping by reusing the already-pinned `scraper` crate (no new dependency) and its primary/backup HTTPS transport by reusing the already-pinned `openssl` crate's macOS-keychain trust-store fix first proven necessary for `web`. Implement `cash5`'s iTerm2 "winning circle" image rendering with the pinned `ab_glyph` (pure-Rust glyph rasterization) and `png` (encoding, real DEFLATE compression) crates — no `image`/`imageproc` dependency, since pixel plotting is hand-rolled directly on a raw RGBA buffer, matching the Go original's own approach.
 - Keep the public library surface limited to package-binary run, output, and
   error boundaries.

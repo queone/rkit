@@ -699,6 +699,9 @@ mod tests {
     use crate::pman::{HttpRequest, HttpResponse};
     use std::io;
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static FIXTURE_NUMBER: AtomicU64 = AtomicU64::new(0);
 
     struct FakeTransport {
         response: Mutex<Option<Result<HttpResponse, String>>>,
@@ -728,8 +731,9 @@ mod tests {
     }
 
     fn temp_paths() -> (store::Paths, std::path::PathBuf) {
+        let number = FIXTURE_NUMBER.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "rkit-cash5-mod-unit-{}-{}",
+            "rkit-cash5-mod-unit-{}-{number}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

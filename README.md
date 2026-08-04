@@ -27,9 +27,11 @@ OpenSSL dependency declared in `Cargo.toml`; vjoin uses its pinned JSON parser;
 the already-pinned `serde_json` plus the pinned `yaml-rust2` crate for YAML;
 `mdview` uses the pinned `comrak` crate for GitHub-Flavored-Markdown
 rendering; `web` and `cash5` use the pinned `scraper` crate for CSS-selector
-HTML scraping; `cash5` additionally uses the pinned `ab_glyph` and `png`
-crates for its iTerm2 "winning circle" image rendering; and the other
-utilities use the Rust standard library and shared package code.
+HTML scraping; `web` additionally uses the pinned `nucleo-picker` crate for
+its interactive result picker; `cash5` additionally uses the pinned
+`ab_glyph` and `png` crates for its iTerm2 "winning circle" image
+rendering; and the other utilities use the Rust standard library and
+shared package code.
 
 ## Install
 
@@ -148,19 +150,29 @@ Usage
   web [options] [query]
 ```
 
-`web` searches DuckDuckGo and prints a numbered list of `title`/`link`
-results by default, `-j`/`--json` for the full `title`/`link`/`snippet`
-array as JSON, or `--open N` to open the Nth (1-based) result in the
-default browser (`-b`/`--browser` overrides it with a specific command).
-`-t`/`--timeout`, `-u`/`--user-agent`, and `-r`/`--referrer` (or their
-`DUCKGO_TIMEOUT`/`DUCKGO_USER_AGENT`/`DUCKGO_REFERRER` environment
-equivalents) default to 5 seconds, a realistic browser User-Agent, and
-`https://google.com` respectively when unset — this deliberately diverges
-from the Go original, whose real (undocumented) behavior sent no timeout
-and empty headers in that case, despite documenting the same defaults.
-An empty query is rejected before any request is sent. The interactive
-fuzzy-finder picker Go embeds is deferred to a future release; `--open N`
-is its replacement for now.
+`web` searches DuckDuckGo and, by default, opens an interactive fuzzy-finder
+result picker (via the pinned `nucleo-picker` crate) whenever stdout and
+stdin are both real terminals — type to filter, arrow keys to navigate,
+Enter to open the selected result in the default browser, Esc/Ctrl-C to
+cancel silently (matching Go's `go-fzf`-backed picker, including its
+silent-no-op-on-cancel behavior). Each row shows `<title>  <snippet,
+truncated to fit>` rather than Go's separate split preview pane —
+`nucleo-picker` has no split-pane mechanism, a deliberate lighter-weight
+tradeoff over embedding `skim` (see `governa/ac35-web-picker.md`). When
+stdout or stdin isn't a terminal (piped, scripted, CI), `web` falls back to
+a numbered list of `title`/`link` results instead — an interactive picker
+can't run there regardless of crate choice. `-j`/`--json` prints the full
+`title`/`link`/`snippet` array as JSON and skips the picker entirely;
+`--open N` opens the Nth (1-based) listed result directly, also skipping
+the picker (`-b`/`--browser` overrides the opener with a specific command
+for either path). `-t`/`--timeout`, `-u`/`--user-agent`, and `-r`/`--referrer`
+(or their `DUCKGO_TIMEOUT`/`DUCKGO_USER_AGENT`/`DUCKGO_REFERRER`
+environment equivalents) default to 5 seconds, a realistic browser
+User-Agent, and `https://google.com` respectively when unset — this
+deliberately diverges from the Go original, whose real (undocumented)
+behavior sent no timeout and empty headers in that case, despite
+documenting the same defaults. An empty query is rejected before any
+request is sent.
 
 ## retotal
 
@@ -477,7 +489,9 @@ indented details, and finish with one indented final status. Rows contain Repo,
 Origin, and the selected result or operation, sorted by Origin. Complete result,
 processing, and final-status lines are yellow in a compatible terminal;
 redirected output is plain.
-The aligned Repo and Origin columns use four literal separator spaces.
+The aligned Repo and Origin columns use four literal separator spaces. A
+trailing `.git` suffix is trimmed from the displayed Origin (noise most of
+the time); the untrimmed URL is still what `clone` actually clones from.
 `repoctl` resolves Origins, sorts the work, and processes repositories
 sequentially. It completes each repository before starting the next.
 

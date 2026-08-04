@@ -155,8 +155,10 @@ fn status_aliases_sort_complete_origin_and_omit_headers() {
     let text = stdout(&short);
     assert_eq!(text.lines().count(), 2);
     assert!(text.starts_with("==> bits"));
-    assert!(text.contains("https://github.com/kquo/bits.git"));
-    assert!(text.contains("https://github.com/queone/governa.git"));
+    assert!(text.contains("https://github.com/kquo/bits"));
+    assert!(!text.contains("https://github.com/kquo/bits.git"));
+    assert!(text.contains("https://github.com/queone/governa"));
+    assert!(!text.contains("https://github.com/queone/governa.git"));
     assert!(!text.contains("Repo"));
     assert!(!text.contains('\x1b'));
     let bits = text.lines().next().unwrap();
@@ -183,7 +185,8 @@ fn status_reports_clean_dirty_and_missing_origin() {
         .lines()
         .find(|line| line.contains("no-origin"))
         .unwrap();
-    assert!(bits.contains("https://github.com/kquo/bits.git"));
+    assert!(bits.contains("https://github.com/kquo/bits"));
+    assert!(!bits.contains(".git"));
     assert!(dirty.contains("<no origin>"));
     assert!(no_origin.contains("<no origin>"));
     assert_eq!(text.lines().count(), 3);
@@ -480,11 +483,19 @@ fn clone_explicit_subset_sorts_origins_and_skips_existing_destination() {
     let output = fixture.command(&["c", "kquo", "zeta", "existing"]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
-    assert!(text.contains("https://github.com/kquo/existing.git"));
-    assert!(text.contains("https://github.com/kquo/zeta.git"));
+    assert!(text.contains("https://github.com/kquo/existing"));
+    assert!(text.contains("https://github.com/kquo/zeta"));
     assert!(text.contains("Skipped"));
     assert!(text.contains("Cloned"));
     assert!(fixture.path.join("zeta/.git").is_dir());
+
+    // The "Cloning ..." row is display-trimmed, but the fixture git's own
+    // "cloned $2" echo reflects the URL it actually received as an
+    // argument -- confirming `git clone` still got the full, working
+    // .git-suffixed URL even though the printed row doesn't show it.
+    let cloning_line = text.lines().find(|line| line.contains("zeta")).unwrap();
+    assert!(!cloning_line.contains(".git"));
+    assert!(text.contains("cloned https://github.com/kquo/zeta.git"));
 }
 
 #[test]
@@ -496,10 +507,17 @@ fn clone_without_subset_reads_repository_names_from_gh() {
     let output = fixture.command(&["clone", "queone"]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
-    assert!(text.contains("https://github.com/queone/bits.git"));
-    assert!(text.contains("https://github.com/queone/governa.git"));
+    assert!(text.contains("https://github.com/queone/bits"));
+    assert!(text.contains("https://github.com/queone/governa"));
     assert!(fixture.path.join("bits/.git").is_dir());
     assert!(fixture.path.join("governa/.git").is_dir());
+
+    // Rows are display-trimmed; the actual clone invocation still received
+    // the full .git-suffixed URL (confirmed via the fixture git's echo).
+    let bits_line = text.lines().find(|line| line.contains("bits")).unwrap();
+    assert!(!bits_line.contains(".git"));
+    assert!(text.contains("cloned https://github.com/queone/bits.git"));
+    assert!(text.contains("cloned https://github.com/queone/governa.git"));
 }
 
 #[test]

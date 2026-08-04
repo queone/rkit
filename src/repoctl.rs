@@ -788,6 +788,15 @@ struct ColumnWidths {
     origin: usize,
 }
 
+/// Strips a trailing literal `.git` suffix for display — noise most of the
+/// time and never load-bearing for a printed Origin column. The `origin`
+/// field itself is left untouched everywhere it's used functionally (the
+/// sort comparators and, for `run_clone`, the actual `git clone` argument),
+/// since only display reads through this helper.
+fn display_origin(origin: &str) -> &str {
+    origin.strip_suffix(".git").unwrap_or(origin)
+}
+
 fn column_widths(results: &[RepoResult]) -> ColumnWidths {
     ColumnWidths {
         repo: results
@@ -797,7 +806,7 @@ fn column_widths(results: &[RepoResult]) -> ColumnWidths {
             .unwrap_or(0),
         origin: results
             .iter()
-            .map(|result| result.origin.chars().count())
+            .map(|result| display_origin(&result.origin).chars().count())
             .max()
             .unwrap_or(0),
     }
@@ -809,23 +818,25 @@ fn render_processing(
     color: ColorMode,
     widths: ColumnWidths,
 ) -> String {
+    let origin = display_origin(&result.origin);
     let row = format!(
         "==> {}{}{}{}",
         result.name,
         " ".repeat(widths.repo - result.name.chars().count() + 4),
-        result.origin,
-        " ".repeat(widths.origin - result.origin.chars().count() + 4),
+        origin,
+        " ".repeat(widths.origin - origin.chars().count() + 4),
     );
     format!("{}\n", color.paint(YELLOW, &(row + action)))
 }
 
 fn render_result(result: &RepoResult, color: ColorMode, widths: ColumnWidths) -> String {
+    let origin = display_origin(&result.origin);
     let row = format!(
         "==> {}{}{}{}{}",
         result.name,
         " ".repeat(widths.repo - result.name.chars().count() + 4),
-        result.origin,
-        " ".repeat(widths.origin - result.origin.chars().count() + 4),
+        origin,
+        " ".repeat(widths.origin - origin.chars().count() + 4),
         result.status,
     );
     let mut output = format!("{}\n", color.paint(YELLOW, &row));
@@ -901,6 +912,42 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn display_origin_strips_trailing_dot_git_only() {
+        assert_eq!(
+            display_origin("https://github.com/kquo/bits.git"),
+            "https://github.com/kquo/bits"
+        );
+        assert_eq!(
+            display_origin("git@github.com:kquo/bits.git"),
+            "git@github.com:kquo/bits"
+        );
+        assert_eq!(
+            display_origin("https://github.com/kquo/bits"),
+            "https://github.com/kquo/bits"
+        );
+        assert_eq!(display_origin("<no origin>"), "<no origin>");
+        assert_eq!(display_origin(""), "");
+    }
+
+    #[test]
+    fn column_widths_and_rendering_measure_the_trimmed_origin() {
+        let results = vec![RepoResult {
+            name: "bits".to_owned(),
+            origin: "https://github.com/kquo/bits.git".to_owned(),
+            status: "👍 main".to_owned(),
+            details: Vec::new(),
+            failed: false,
+        }];
+        let widths = column_widths(&results);
+        // "https://github.com/kquo/bits" (trimmed) is 28 chars; the raw
+        // (untrimmed, .git-suffixed) string would be 32.
+        assert_eq!(widths.origin, 28);
+        let output = render_result(&results[0], ColorMode::new(false), widths);
+        assert!(output.contains("https://github.com/kquo/bits "));
+        assert!(!output.contains(".git"));
     }
 
     #[test]
