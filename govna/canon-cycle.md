@@ -16,7 +16,7 @@ What govna commits to when shipping canon updates:
 ## Metadata and retired routing marker
 
 - Treat `govna/metadata.txt` as the authoritative consumer identity record.
-- Require `schema_version`, `govna_version`, and `repo_type`; require `code_stack` only for CODE consumers.
+- Require `schema_version`, `canon_version`, and `repo_type`; require `code_stack` only for CODE consumers.
 - govna has no legacy marker file to accept during a compatibility window — it never shipped one.
 - Write metadata during `render-canon`/`apply`.
 

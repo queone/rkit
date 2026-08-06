@@ -64,6 +64,8 @@ workflow request.
 The operator flow is two steps:
 
 1. **Run `./build.sh prep vX.Y.Z "message"`.** Stages version bumps, inserts the CHANGELOG row, deletes completed AC files, sweeps matching AC-pointer IE lines from `plan.md`, runs validation builds before and after, and prints the canonical release command. The agent determines the version (semver classification from the AC's scope) and drafts the release message (≤ 80 characters) before invoking prep. Flags: `--dry-run`/`-n` prints intended writes without touching the working tree; `--no-build`/`-B` skips the pre- and post-check builds.
+
+   `prep` bumps `Cargo.toml`'s package version automatically, but does **not** bump any declared binary's own literal `PROGRAM_VERSION` — bump that by hand, in every declared binary path, before running `prep`. When doing so, also bump `Cargo.toml`'s version to the same target value in the same pass, before invoking `prep`: its own version bump is idempotent when the file already holds the target value, so pre-bumping causes no conflict, but leaving `Cargo.toml` at the old version until `prep` writes it creates a transient mismatch against the already-bumped `PROGRAM_VERSION` that the pre-check build's own test suite will legitimately fail on, since pre-check runs before `prep`'s writes.
 2. **Run the printed release command (`./build.sh vX.Y.Z "message"`).** Shows `git status --short`, lists every git step it will execute, and prompts for interactive confirmation. On approval it orchestrates `git add → commit → tag → push tag → push branch`.
 
 Present only the release command after prep; do not add trailing commentary about wrapper routing or prompts. The director already knows.
