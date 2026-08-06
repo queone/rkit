@@ -38,8 +38,23 @@ where
     W: Write,
     E: Write,
 {
+    run_with(args, version, ColorMode::detect_stdout(), stdout, stderr)
+}
+
+fn run_with<I, S, W, E>(
+    args: I,
+    version: &str,
+    color: ColorMode,
+    stdout: &mut W,
+    stderr: &mut E,
+) -> u8
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+    W: Write,
+    E: Write,
+{
     let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
-    let color = ColorMode::detect_stdout();
 
     // Go has no -v/--version flag at all (a bare "--version" would be
     // treated as a literal, nonexistent file path); added here because
@@ -624,6 +639,9 @@ mod tests {
 
     static FIXTURE_NUMBER: AtomicU64 = AtomicU64::new(0);
 
+    /// Must track `PROGRAM_VERSION` in `src/bin/retotal.rs`.
+    const TEST_VERSION: &str = "2.0.0";
+
     fn temp_dir() -> PathBuf {
         let number = FIXTURE_NUMBER.fetch_add(1, Ordering::Relaxed);
         let path =
@@ -635,7 +653,13 @@ mod tests {
     fn run_args(args: &[&str]) -> (u8, String, String) {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let code = run(args.to_vec(), "1.0.0", &mut stdout, &mut stderr);
+        let code = run_with(
+            args.to_vec(),
+            TEST_VERSION,
+            ColorMode::new(false),
+            &mut stdout,
+            &mut stderr,
+        );
         (
             code,
             String::from_utf8(stdout).unwrap(),
@@ -964,7 +988,7 @@ mod tests {
         for args in [vec![], vec!["-h"], vec!["--help"], vec!["a", "b"]] {
             let (code, stdout, stderr) = run_args(&args);
             assert_eq!(code, 0, "args {args:?}, stderr: {stderr}");
-            assert!(stdout.contains("retotal v1.0.0"));
+            assert!(stdout.contains(&format!("retotal v{TEST_VERSION}")));
         }
     }
 
