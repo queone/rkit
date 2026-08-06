@@ -479,7 +479,10 @@ directory. Its short commands and long aliases are:
 ```text
 repoctl s, status [REPO ...]        Show status
 repoctl p, pull [REPO ...]          Pull repositories
-repoctl c, clone OWNER [REPO ...]  Clone all or selected owner repositories
+repoctl c, clone NAME               Clone NAME (scoped; see below)
+repoctl c, clone OWNER REPO ...     Clone selected owner repositories
+repoctl c, clone OWNER/REPO         Clone one repository directly
+repoctl l, list                     List repositories in scope
 repoctl b, build [REPO ...]         Run ./build.sh in repositories
 ```
 
@@ -511,10 +514,19 @@ governed child build only when the variable is absent. This preserves the
 child's normal colorized output while `repoctl` streams and indents it. An
 inherited value is preserved, and disabled-color execution does not inject one.
 
-`clone` uses `gh repo list OWNER --json name --jq .[].name` when no repository
-names are supplied and clones from `https://github.com/OWNER/REPO.git`. It
-requires both Git and GitHub CLI for owner-wide listing; explicit repository
-names require Git only.
+`clone NAME` (a single operand with no `/`) is scoped: if `NAME`
+case-insensitively matches the authenticated GitHub user (`gh api user --jq
+.login`) or one of their orgs (`gh api user/orgs --jq '.[].login'`), it
+bulk-clones every repository under that owner via `gh repo list NAME --json
+name --jq .[].name`, exactly like today. Otherwise it searches those same
+owners for a repository named exactly `NAME` and clones it — zero matches is
+an error, and a name found under more than one scoped owner is also an
+error asking for `OWNER/REPO` instead. `clone OWNER REPO ...` and `clone
+OWNER/REPO` always clone directly from `https://github.com/OWNER/REPO.git`
+with no scope check, for cloning any repository regardless of ownership.
+`list` prints every `owner/repo` in scope, one per line, without cloning.
+Scoped forms (`clone NAME`, `list`) require both Git and GitHub CLI;
+`OWNER REPO ...` and `OWNER/REPO` require Git only.
 
 ## rn
 

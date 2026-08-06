@@ -130,9 +130,51 @@ if [ "$1" = "--version" ]; then
   echo "gh fixture"
   exit 0
 fi
+if [ "$1" = "api" ] && [ "$2" = "user" ] && [ "$4" = ".login" ]; then
+  echo kquo
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user/orgs" ]; then
+  echo queone
+  exit 0
+fi
 if [ "$1" = "repo" ] && [ "$2" = "list" ]; then
   echo governa
   echo bits
+  exit 0
+fi
+echo "unexpected gh arguments: $*" >&2
+exit 9
+"##
+}
+
+/// Same authenticated-user/org identity as `fake_gh` (`kquo` + `queone`),
+/// but `repo list` returns a different set per owner so scoped bare-name
+/// search tests can exercise single-match, zero-match, and cross-owner
+/// collision cases. `shared` deliberately exists under both owners.
+fn fake_gh_scoped() -> &'static str {
+    r##"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "gh fixture"
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ] && [ "$4" = ".login" ]; then
+  echo kquo
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user/orgs" ]; then
+  echo queone
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "kquo" ]; then
+  echo bits
+  echo shared
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "queone" ]; then
+  echo governa
+  echo anatine
+  echo shared
   exit 0
 fi
 echo "unexpected gh arguments: $*" >&2
@@ -521,6 +563,138 @@ fn clone_without_subset_reads_repository_names_from_gh() {
 }
 
 #[test]
+fn clone_qualified_owner_repo_bypasses_scope_and_gh() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    // Deliberately no `gh` stub: proves the qualified OWNER/REPO form never
+    // shells out to `gh` at all, even to a foreign (non-scoped) owner.
+
+    let output = fixture.command(&["c", "govna/anatine"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/govna/anatine"));
+    assert!(text.contains("Cloned"));
+    assert!(fixture.path.join("anatine/.git").is_dir());
+    assert!(text.contains("cloned https://github.com/govna/anatine.git"));
+}
+
+#[test]
+fn clone_qualified_operand_validation_errors() {
+    let fixture = Fixture::new();
+
+    let trailing_slash = fixture.command(&["c", "owner/"]);
+    assert_eq!(trailing_slash.status.code(), Some(2));
+    assert!(stderr(&trailing_slash).contains("exactly one '/'"));
+
+    let leading_slash = fixture.command(&["c", "/repo"]);
+    assert_eq!(leading_slash.status.code(), Some(2));
+    assert!(stderr(&leading_slash).contains("exactly one '/'"));
+
+    let multi_segment = fixture.command(&["c", "a/b/c"]);
+    assert_eq!(multi_segment.status.code(), Some(2));
+    assert!(stderr(&multi_segment).contains("exactly one '/'"));
+
+    let combined = fixture.command(&["c", "owner/repo", "extra"]);
+    assert_eq!(combined.status.code(), Some(2));
+    assert!(stderr(&combined).contains("must be the only argument"));
+}
+
+#[test]
+fn clone_scoped_bare_name_matches_org_case_insensitively() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh());
+
+    let output = fixture.command(&["clone", "QueOne"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/queone/bits"));
+    assert!(text.contains("https://github.com/queone/governa"));
+    assert!(fixture.path.join("bits/.git").is_dir());
+}
+
+#[test]
+fn clone_scoped_bare_name_single_match_clones_from_matching_owner() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh_scoped());
+
+    let output = fixture.command(&["c", "anatine"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/queone/anatine"));
+    assert!(fixture.path.join("anatine/.git").is_dir());
+}
+
+#[test]
+fn clone_scoped_bare_name_with_no_match_reports_not_found() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh_scoped());
+
+    let output = fixture.command(&["c", "nonexistent"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    let err = stderr(&output);
+    assert!(err.contains("not found among your GitHub account and orgs"));
+    assert!(err.contains("nonexistent"));
+}
+
+#[test]
+fn clone_scoped_bare_name_collision_reports_every_match() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    fixture.script("gh", fake_gh_scoped());
+
+    let output = fixture.command(&["c", "shared"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stdout(&output).is_empty());
+    let err = stderr(&output);
+    assert!(err.contains("kquo/shared"));
+    assert!(err.contains("queone/shared"));
+    assert!(err.contains("qualify as OWNER/REPO"));
+}
+
+#[test]
+fn clone_explicit_repos_under_foreign_owner_stays_unrestricted() {
+    let fixture = Fixture::new();
+    fixture.script("git", fake_git());
+    // Deliberately no `gh` stub: proves the explicit OWNER REPO ... form
+    // stays exactly as unrestricted as it was before this AC.
+
+    let output = fixture.command(&["c", "govna", "anatine"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("https://github.com/govna/anatine"));
+    assert!(fixture.path.join("anatine/.git").is_dir());
+}
+
+#[test]
+fn list_prints_every_scoped_repository_without_cloning() {
+    let fixture = Fixture::new();
+    fixture.script("gh", fake_gh_scoped());
+    // Deliberately no `git` stub: `list` never shells to git.
+
+    let short = fixture.command(&["l"]);
+    let long = fixture.command(&["list"]);
+    assert!(short.status.success(), "{}", stderr(&short));
+    assert_eq!(stdout(&short), stdout(&long));
+    let short_stdout = stdout(&short);
+    let lines: Vec<&str> = short_stdout.lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            "kquo/bits",
+            "kquo/shared",
+            "queone/anatine",
+            "queone/governa",
+            "queone/shared",
+        ]
+    );
+    assert!(!fixture.path.join("bits").exists());
+}
+
+#[test]
 fn unknown_subset_is_rejected_before_operation() {
     let fixture = Fixture::new();
     fixture.repo("bits");
@@ -559,7 +733,7 @@ fn missing_provider_commands_and_invalid_clone_operands_have_recovery_guidance()
 
     let invalid_clone = fixture.command(&["clone"]);
     assert_eq!(invalid_clone.status.code(), Some(2));
-    assert!(stderr(&invalid_clone).contains("expected OWNER"));
+    assert!(stderr(&invalid_clone).contains("expected NAME"));
 }
 
 #[test]

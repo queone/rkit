@@ -53,6 +53,8 @@ enum Command {
     Pull { repos: Vec<String> },
     Build { repos: Vec<String> },
     Clone { owner: String, repos: Vec<String> },
+    CloneScoped { name: String },
+    List,
 }
 
 #[derive(Debug)]
@@ -107,6 +109,8 @@ where
         Command::Pull { repos } => run_local(Operation::Pull, repos, color, stdout, stderr),
         Command::Build { repos } => run_local(Operation::Build, repos, color, stdout, stderr),
         Command::Clone { owner, repos } => run_clone(&owner, repos, color, stdout, stderr),
+        Command::CloneScoped { name } => run_clone_scoped(&name, color, stdout, stderr),
+        Command::List => run_list(stdout, stderr),
     }
 }
 
@@ -153,24 +157,67 @@ where
         "s" | "status" => Ok(Command::Status { repos: operands }),
         "p" | "pull" => Ok(Command::Pull { repos: operands }),
         "b" | "build" => Ok(Command::Build { repos: operands }),
+        "l" | "list" => {
+            if !operands.is_empty() {
+                return Err(CliError::usage(
+                    "list: expected no arguments; use repoctl --help",
+                ));
+            }
+            Ok(Command::List)
+        }
         "c" | "clone" => {
-            let (owner, repos) = operands.split_first().ok_or_else(|| {
-                CliError::usage("clone: expected OWNER [REPO ...]; use repoctl --help")
+            let (first, rest) = operands.split_first().ok_or_else(|| {
+                CliError::usage(
+                    "clone: expected NAME, OWNER/REPO, or OWNER REPO ...; use repoctl --help",
+                )
             })?;
-            if owner.is_empty() || repos.iter().any(String::is_empty) {
+            if first.is_empty() || rest.iter().any(String::is_empty) {
                 return Err(CliError::usage(
                     "clone: OWNER and REPO names must not be empty; use repoctl --help",
                 ));
             }
+            if first.contains('/') {
+                if !rest.is_empty() {
+                    return Err(CliError::usage(
+                        "clone: OWNER/REPO must be the only argument; use repoctl --help",
+                    ));
+                }
+                let (owner, repo) = split_qualified(first).ok_or_else(|| {
+                    CliError::usage(
+                        "clone: OWNER/REPO must have exactly one '/' with both parts non-empty; use repoctl --help",
+                    )
+                })?;
+                return Ok(Command::Clone {
+                    owner: owner.to_owned(),
+                    repos: vec![repo.to_owned()],
+                });
+            }
+            if rest.is_empty() {
+                return Ok(Command::CloneScoped {
+                    name: first.clone(),
+                });
+            }
             Ok(Command::Clone {
-                owner: owner.clone(),
-                repos: repos.to_vec(),
+                owner: first.clone(),
+                repos: rest.to_vec(),
             })
         }
         _ => Err(CliError::usage(format!(
-            "parse command {command:?}: expected s/status, p/pull, c/clone, or b/build; use repoctl --help"
+            "parse command {command:?}: expected s/status, p/pull, c/clone, l/list, or b/build; use repoctl --help"
         ))),
     }
+}
+
+/// Splits a qualified `OWNER/REPO` clone operand. Returns `None` (a usage
+/// error to the caller) unless the operand has exactly one `/` with a
+/// non-empty owner and repo on either side — rejects `owner/`, `/repo`, and
+/// multi-segment forms like `a/b/c`.
+fn split_qualified(operand: &str) -> Option<(&str, &str)> {
+    let (owner, repo) = operand.split_once('/')?;
+    if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+        return None;
+    }
+    Some((owner, repo))
 }
 
 #[derive(Clone, Copy)]
@@ -290,6 +337,134 @@ fn run_clone(
         emit(stdout, stderr, &render_final_status(&result, color))?;
     }
     Ok(if failed { 1 } else { 0 })
+}
+
+/// Resolves a single bare (non-qualified, no explicit repo list) `clone`
+/// operand: bulk-clones everything under it when it case-insensitively
+/// matches the authenticated GitHub user or one of their orgs (today's
+/// existing bulk-clone behavior, now scope-gated), otherwise searches those
+/// same owners for exactly one repository named `name` and clones it.
+/// `OWNER REPO ...` and `OWNER/REPO` bypass this resolution entirely and
+/// stay unrestricted — see `run_clone`.
+fn run_clone_scoped(
+    name: &str,
+    color: ColorMode,
+    stdout: &mut impl Write,
+    stderr: &mut impl Write,
+) -> Result<u8, CliError> {
+    require_command("git", "install Git and ensure git is on PATH")?;
+    require_command("gh", "install GitHub CLI and authenticate with gh")?;
+    let owners = scope_owners()?;
+    if let Some(owner) = owners.iter().find(|owner| owner.eq_ignore_ascii_case(name)) {
+        return run_clone(owner, Vec::new(), color, stdout, stderr);
+    }
+
+    let mut matches = Vec::new();
+    for owner in &owners {
+        if list_remote_repositories(owner)?
+            .iter()
+            .any(|repo| repo == name)
+        {
+            matches.push(owner.clone());
+        }
+    }
+    match matches.len() {
+        0 => Err(CliError::usage(format!(
+            "clone: {name:?} not found among your GitHub account and orgs; use OWNER/REPO to clone a repository outside that scope"
+        ))),
+        1 => run_clone(&matches[0], vec![name.to_owned()], color, stdout, stderr),
+        _ => {
+            let hits = matches
+                .iter()
+                .map(|owner| format!("{owner}/{name}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(CliError::usage(format!(
+                "clone: {name:?} matches more than one repository in scope ({hits}); qualify as OWNER/REPO"
+            )))
+        }
+    }
+}
+
+/// Lists every repository under the authenticated GitHub user and their
+/// orgs as `owner/repo`, one per line. Performs no cloning.
+fn run_list(stdout: &mut impl Write, stderr: &mut impl Write) -> Result<u8, CliError> {
+    require_command("gh", "install GitHub CLI and authenticate with gh")?;
+    let owners = scope_owners()?;
+    let mut lines = Vec::new();
+    let mut failed = false;
+    for owner in &owners {
+        match list_remote_repositories(owner) {
+            Ok(names) => lines.extend(names.into_iter().map(|name| format!("{owner}/{name}"))),
+            Err(error) => {
+                failed = true;
+                emit_detail(stdout, stderr, error.message())?;
+            }
+        }
+    }
+    lines.sort();
+    for line in lines {
+        emit(stdout, stderr, &format!("{line}\n"))?;
+    }
+    Ok(if failed { 1 } else { 0 })
+}
+
+/// The authenticated GitHub user plus every org they belong to, in that
+/// order. Always a live `gh api` lookup — no caching, no config file.
+fn scope_owners() -> Result<Vec<String>, CliError> {
+    let mut owners = vec![authenticated_user()?];
+    owners.extend(org_memberships()?);
+    Ok(owners)
+}
+
+fn authenticated_user() -> Result<String, CliError> {
+    let output = ProcessCommand::new("gh")
+        .args(["api", "user", "--jq", ".login"])
+        .output()
+        .map_err(|error| {
+            CliError::runtime(format!(
+                "resolve authenticated GitHub user: {error}; authenticate with gh and retry"
+            ))
+        })?;
+    if !output.status.success() {
+        return Err(CliError::runtime(format!(
+            "resolve authenticated GitHub user: gh exited with {}; authenticate with gh and retry{}",
+            output.status,
+            detail_suffix(&combined_output(&output)),
+        )));
+    }
+    let login = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if login.is_empty() {
+        return Err(CliError::runtime(
+            "resolve authenticated GitHub user: gh returned an empty login; authenticate with gh and retry"
+                .to_owned(),
+        ));
+    }
+    Ok(login)
+}
+
+fn org_memberships() -> Result<Vec<String>, CliError> {
+    let output = ProcessCommand::new("gh")
+        .args(["api", "user/orgs", "--jq", ".[].login"])
+        .output()
+        .map_err(|error| {
+            CliError::runtime(format!(
+                "resolve GitHub org memberships: {error}; authenticate with gh and retry"
+            ))
+        })?;
+    if !output.status.success() {
+        return Err(CliError::runtime(format!(
+            "resolve GitHub org memberships: gh exited with {}; authenticate with gh and retry{}",
+            output.status,
+            detail_suffix(&combined_output(&output)),
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 fn discover_repositories() -> Result<Vec<RepoResult>, CliError> {
@@ -891,8 +1066,9 @@ fn help(color: ColorMode, version: &str) -> String {
     format!(
         "{name} v{version}\n\
 Control a collection of local Git repositories.\n\n\
-Usage\n  {name} COMMAND [REPO ...]\n  {name} clone OWNER [REPO ...]\n\n\
-Commands\n  s, status  Show repository status\n  p, pull    Pull selected repositories\n  c, clone   Clone an owner's repositories\n  b, build   Run ./build.sh in selected repositories\n\n\
+Usage\n  {name} COMMAND [REPO ...]\n  {name} clone NAME\n  {name} clone OWNER REPO ...\n  {name} clone OWNER/REPO\n\n\
+Commands\n  s, status  Show repository status\n  p, pull    Pull selected repositories\n  c, clone   Clone a repository (see below)\n  l, list    List repositories in scope\n  b, build   Run ./build.sh in selected repositories\n\n\
+Clone\n  clone NAME bulk-clones NAME's repositories when NAME matches your\n  authenticated GitHub account or an org you belong to, else searches\n  those repositories for one named NAME. clone OWNER REPO ... and\n  clone OWNER/REPO clone directly with no scope check.\n\n\
 Options\n  -v, --version  Print version and exit\n  -h, -?, --help Show this help message and exit\n\n\
 Summary rows are sorted by Origin and show Repo, Origin, and operation Status.\n"
     )
