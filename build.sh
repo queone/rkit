@@ -17,16 +17,16 @@ _quote() {
 }
 
 # ── color ────────────────────────────────────────────────────────────────────
-# Mirrors governa-color: a sequence is emitted only when color is both enabled
-# (NO_COLOR unset, TERM != dumb, stdout a TTY) and 256-color capable (COLORTERM
-# truecolor/24bit, or TERM containing 256color). Computed once. The TTY signal
-# is injectable via GOVERNA_FORCE_TTY (1/0) for tests, since no PTY is used.
+# A sequence is emitted only when color is both enabled (NO_COLOR unset,
+# TERM != dumb, stdout a TTY) and 256-color capable (COLORTERM truecolor/24bit,
+# or TERM containing 256color). Computed once. The TTY signal is injectable
+# via GOVNA_FORCE_TTY (1/0) for tests, since no PTY is used.
 _color_init() {
   _color_on=1
   [ -n "${NO_COLOR:-}" ] && _color_on=0
   [ "${TERM:-}" = "dumb" ] && _color_on=0
-  if [ -n "${GOVERNA_FORCE_TTY:-}" ]; then
-    [ "${GOVERNA_FORCE_TTY}" = "1" ] || _color_on=0
+  if [ -n "${GOVNA_FORCE_TTY:-}" ]; then
+    [ "${GOVNA_FORCE_TTY}" = "1" ] || _color_on=0
   elif [ ! -t 1 ]; then
     _color_on=0
   fi
@@ -54,7 +54,7 @@ red3() { _wrap '38;5;124' "$1"; }
 whi5() { _wrap '38;5;231' "$1"; }
 
 # bold rewrites every inner reset so the attribute survives nested color, then
-# wraps — matching governa-color Bold. Quoted pattern => literal match (no glob).
+# wraps. Quoted pattern => literal match (no glob).
 bold() {
   if [ "$_color_on" = 1 ] && [ "$_color256" = 1 ]; then
     local reset bold1
@@ -98,7 +98,7 @@ _cleanup_cargo_target() {
   [ -n "$_repo_root" ] || return 1
   _path_is_within "$target" "$_repo_root" && return 1
   case "$(basename "$target")" in
-  governa-rust-target.*) ;;
+  govna-rust-target.*) ;;
   *) return 1 ;;
   esac
   rm -rf -- "$target" || return 1
@@ -134,7 +134,7 @@ _create_cargo_target() {
       return 1
     fi
   fi
-  candidate=$(mktemp -d "$resolved/governa-rust-target.XXXXXX") || {
+  candidate=$(mktemp -d "$resolved/govna-rust-target.XXXXXX") || {
     _failure \
       'build: create Cargo target: mktemp failed; set TMPDIR to a writable path outside the repository'
     return 1
@@ -156,7 +156,7 @@ _create_cargo_target() {
     return 1
   fi
   case "$(basename "$candidate")" in
-  governa-rust-target.*) ;;
+  govna-rust-target.*) ;;
   *)
     _failure 'build: Cargo target has an unsafe name; refusing cleanup'
     return 1
@@ -535,8 +535,8 @@ _utility_path() { # $1=utility name
 _validate_compiled_utility() { # $1=utility $2=declared version
   local utility="$1" version="$2" binary stdout stderr rc=0
   binary="$_cargo_target/release/$utility"
-  stdout="$_cargo_target/governa-version-stdout"
-  stderr="$_cargo_target/governa-version-stderr"
+  stdout="$_cargo_target/govna-version-stdout"
+  stderr="$_cargo_target/govna-version-stderr"
   [ -x "$binary" ] || {
     _failure "build: validate utility output: $utility: compiled binary $binary is missing or not executable; restore the Cargo target and retry"
     return 1
@@ -580,7 +580,7 @@ _run_cargo_install() { # $1=utility $2=version $3=output $4=verbose; rest=cargo
   if [ "$verbose" -eq 1 ]; then
     _run_cargo "cargo install $utility" '' "$@" || return $?
   else
-    log=$(mktemp "$_cargo_target/governa-rust-install.XXXXXX") || {
+    log=$(mktemp "$_cargo_target/govna-rust-install.XXXXXX") || {
       _failure "build: install utility: $utility: create output log failed; check temporary-directory permissions"
       return 1
     }
@@ -986,7 +986,7 @@ _ac_refs() {
 _matching_ac_files() {
   local refs="$1" file name number
   [ -n "$refs" ] || return 0
-  for file in governa/ac[0-9]*-*.md; do
+  for file in govna/ac[0-9]*-*.md; do
     [ -f "$file" ] || continue
     name=$(basename "$file")
     number=$(printf '%s' "$name" | sed -E 's/^ac([0-9]+)-.*/\1/')
@@ -1003,7 +1003,7 @@ _remove_plan_pointers() {
   tmp=$(mktemp "${TMPDIR:-/tmp}/plan.XXXXXX")
   while IFS= read -r line || [ -n "$line" ]; do
     number=$(printf '%s' "$line" |
-      sed -nE 's/.*→[[:space:]]+governa\/ac([0-9]+)-.*/\1/p')
+      sed -nE 's/.*→[[:space:]]+govna\/ac([0-9]+)-.*/\1/p')
     if [ -n "$number" ] && printf '%s\n' "$refs" | grep -qx "$number"; then
       printf '%s %s\n' "$(yel7 'prep: removed plan.md IE line:')" "$(_trim "$line")"
       continue

@@ -119,9 +119,9 @@ delegated Git clone/pull and repository build operations.
 - `tests/dos2unix_cli.rs`: end-to-end `dos2unix` tests
 - `tests/repoctl_cli.rs`: end-to-end `repoctl` tests
 - `tests/build_cli.sh`: Bash 3.2-compatible build and release routing tests
-- `governa/development-cycle.md`: workflow from roadmap through release
-- `governa/ac-template.md`: acceptance-criteria template for new work
-- `governa/build-release.md`: build, test, and release rules
+- `govna/development-cycle.md`: workflow from roadmap through release
+- `govna/ac-template.md`: acceptance-criteria template for new work
+- `govna/build-release.md`: build, test, and release rules
 
 ## Data And Control Flow
 
@@ -311,6 +311,10 @@ delegated Git clone/pull and repository build operations.
 4. Generate 5 recommendations (most/least common by position, most frequent overall, hot last-30-days, consecutive-pair avoidance), each guaranteed absent from the full historical-winners set via a deterministic swap/lexicographic-search fallback chain.
 5. `-s`/`--stats`, `-m [N]`/`--match-analysis`, and `-o [N]` render statistics (chi-squared uniformity, birthday-paradox duplicates), match/pattern analysis, and an odds/EV table respectively; `-o`/`-m`'s optional-value parsing runs before general flag dispatch, matching Go's cobra-can't-do-optional-values pre-parse hack. `-v`/`--version` prints only the version, diverging from Go's full-usage-screen `-v`, matching the `mdview`/`retotal` fix.
 6. In an iTerm2 session (an injectable `TerminalCapability` seam, not a bare env read, so `run_daily`'s and `display_match_analysis`'s existing stdout-content tests stay deterministic), render the "winning circle" — numbers 1-45 around a ring, winners spoked and highlighted — via hand-plotted pixels on a raw RGBA buffer (`ab_glyph` for glyph rasterization, `png` for encoding, no canvas-drawing crate), then emit it as an iTerm2 inline image. One emission in the daily summary (last winning numbers); one per displayed draw in match analysis (governed by `-m N` exactly, no independent cap, matching Go).
+
+## AC Lifecycle Control Flow
+
+The governed change path is `Draft → Audit → Refine → Implement → Ratify → Package`. Draft creates the AC; Audit, Refine, Implement, and Ratify are the four AC phases; Package is post-Ratify release preparation and is not a fifth phase.
 
 ## Architecture Notes
 

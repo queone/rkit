@@ -3,11 +3,6 @@
 *.test
 *.exe
 
-# Root command binaries (Go compiler emits these to repo root when `go build ./cmd/<name>` is run without -o).
-/build
-/prep
-/rel
-
 # Coverage
 build-cover-*.out
 

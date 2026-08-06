@@ -25,7 +25,7 @@ assert_contains() {
 pass() { test_count=$((test_count + 1)); }
 
 new_fixture() {
-  mktemp -d "${TMPDIR:-/tmp}/governa-rust-build-test.XXXXXX"
+  mktemp -d "${TMPDIR:-/tmp}/govna-rust-build-test.XXXXXX"
 }
 
 test_utility_declaration_validation() {

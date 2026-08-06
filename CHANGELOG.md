@@ -3,6 +3,7 @@
 | Version | Summary |
 |---------|---------|
 | Unreleased | AC2 ports the tree utility to a standard-library-only Rust binary with deterministic traversal, skipped-descendant warnings, contextual root failures, compatibility output, isolated builds, and Cargo installation; AC5 ports dos2unix with byte-safe preview and conversion, explicit multi-binary layout, contextual failures, and macOS toolchain setup; AC6 adds space-separated scoped Rust builds while preserving package-wide release validation; preserve README.md project content; preserve CHANGELOG.md project history |
+| 1.13.2 | AC38: adopt govna v0.1.0, restore arch.md, drop stale Project Rules bullets |
 | 1.13.1 | AC37: fix retotal test color-mode flake and version literal |
 | 1.13.0 | AC35: add web interactive picker, trim repoctl Origin .git suffix |
 | 1.12.0 | AC26+AC27+AC28+AC29+AC30+AC34+AC36: port fr/sms/jy/retotal/cash5/web/mdview |
