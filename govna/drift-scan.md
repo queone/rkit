@@ -34,7 +34,7 @@ Each canon-governed file gets exactly one of 8 classifications, decided by an or
 7. **Otherwise divergent, no marker, prior commits touching the file** → `ambiguity` — the file has a history of intentional local edits; a Director must decide sync vs. keep.
 8. **Otherwise divergent, no marker, no prior commits** → `clear-sync` — safe to adopt canon's version.
 
-`govna/metadata.txt` gets a ninth outcome layered on top: if the file is absent under a govna-adopted repo, it's forced to `migration-required` regardless of the byte-comparison result (see Migration-required items).
+`govna/metadata.txt` gets metadata-specific handling layered on top. An absent file is forced to `migration-required` regardless of the byte-comparison result (see Migration-required items). A present `canon_version` must use strict `vMAJOR.MINOR.PATCH` form. When the target version is lower than embedded canon and replacing only that field makes the whole file byte-equal to rendered canon, the file is forced to `clear-sync` regardless of git history or a metadata preserve marker. Other metadata differences remain whole-file review items. A malformed version fails before AC emission; a target version newer than embedded canon also fails and directs the operator to upgrade govna rather than downgrade consumer metadata.
 
 Files with no canon counterpart in the target's own flavor route to `target-has-no-canon` (see Cross-flavor orphan detection) rather than through this ordered check.
 
@@ -65,7 +65,7 @@ A Director locks a local variant against future sync by placing one of these fou
 - `intentional divergence: <path>`
 - `<path>: keep local`
 
-A marker on a missing file suppresses `missing-in-target` to a suppressed `match`; a marker on a divergent file routes it to `preserve` instead of `ambiguity`/`clear-sync`.
+A marker on a missing file suppresses `missing-in-target` to a suppressed `match`; a marker on a divergent file routes it to `preserve` instead of `ambiguity`/`clear-sync`. The sole exception is an eligible stale-version-only `govna/metadata.txt`, whose canon-owned `canon_version` cannot be pinned by a preserve marker.
 
 ## Cross-flavor orphan detection
 
