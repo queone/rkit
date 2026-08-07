@@ -1,4 +1,4 @@
 schema_version = 1
-canon_version = v0.1.0
+canon_version = v0.2.0
 repo_type = CODE
 code_stack = Rust
