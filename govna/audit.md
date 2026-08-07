@@ -1,13 +1,13 @@
-# Drift Scan
+# Audit
 
-`govna drift-scan` compares an adopted repo's governance artifacts against what `govna render-canon` would produce for it now, and emits a `govna/ac<N>-drift-scan-<canon-version>.md` stub listing the divergences for the Director to resolve.
+`govna audit` compares an adopted repo's governance artifacts against what `govna render` would produce for it now, and emits a `govna/ac<N>-audit-<canon-version>.md` stub listing the divergences for the Director to resolve.
 
-Run it from the consumer repo root (no positional arguments) after `govna render-canon` or `govna apply`.
+Run it from the consumer repo root (no positional arguments) after `govna render` or `govna apply`.
 
 ## Usage
 
 ```
-govna drift-scan [flags]
+govna audit [options]
 ```
 
 Flags:
@@ -19,7 +19,7 @@ Flags:
 - `-n, --repo-name <name>` — override repo name (default: basename of the target directory).
 - `-h, --help` — show this help.
 
-Preconditions: the target must be a govna-adopted repo (`AGENTS.md` present, plus a govna adoption signal — one of `govna/ac-template.md`, `govna/release.md`, `govna/build-release.md`, or a `CHANGELOG.md` row referencing `govna apply` or `govna render-canon`) and a git worktree (`.git/` present, `git` on `PATH`) — drift-scan needs git history to distinguish clean canon divergence from a locally-edited file.
+Preconditions: the target must be a govna-adopted repo (`AGENTS.md` present, plus a govna adoption signal — one of `govna/ac-template.md`, `govna/release.md`, `govna/build-release.md`, or a `CHANGELOG.md` row referencing `govna apply` or `govna render`) and a git worktree (`.git/` present, `git` on `PATH`).
 
 ## Classification
 
@@ -31,8 +31,8 @@ Each canon-governed file gets exactly one of 8 classifications, decided by an or
 4. **Mixed-content file, canon zone byte-equal** (see Mixed-content boundary registry below) → `match` — the repo-owned tail below the boundary is not compared.
 5. **Listed in the expected-divergence registry** → `expected-divergence`.
 6. **Otherwise divergent, preserve marker found** → `preserve`.
-7. **Otherwise divergent, no marker, prior commits touching the file** → `ambiguity` — the file has a history of intentional local edits; a Director must decide sync vs. keep.
-8. **Otherwise divergent, no marker, no prior commits** → `clear-sync` — safe to adopt canon's version.
+7. **Otherwise divergent, valid baseline entry matches the target comparison region** → `clear-sync` — the target still equals its previously rendered canon and can safely adopt current canon.
+8. **Otherwise divergent, baseline entry missing or not matching the target comparison region** → `ambiguity` — a Director must decide sync vs. keep. During first baseline migration only, commit history remains the conservative fallback.
 
 `govna/metadata.txt` gets metadata-specific handling layered on top. An absent file is forced to `migration-required` regardless of the byte-comparison result (see Migration-required items). A present `canon_version` must use strict `vMAJOR.MINOR.PATCH` form. When the target version is lower than embedded canon and replacing only that field makes the whole file byte-equal to rendered canon, the file is forced to `clear-sync` regardless of git history or a metadata preserve marker. Other metadata differences remain whole-file review items. A malformed version fails before AC emission; a target version newer than embedded canon also fails and directs the operator to upgrade govna rather than downgrade consumer metadata.
 
@@ -58,7 +58,7 @@ Files with a documented canon-above/local-below boundary, compared only above th
 
 ## Preserve-marker phrase set
 
-A Director locks a local variant against future sync by placing one of these four phrases (with `<path>` replaced by the file's repo-relative path) in `CHANGELOG.md`'s `| Unreleased | |` row Summary column, or in any governance doc drift-scan scans:
+A Director locks a local variant against future sync by placing one of these four phrases (with `<path>` replaced by the file's repo-relative path) in `CHANGELOG.md`'s `| Unreleased | |` row Summary column, or in any governance doc audit scans:
 
 - `preserve <path>`
 - `do not sync <path>`
@@ -73,21 +73,27 @@ Files present under the target's `govna/` tree with no canon counterpart in the 
 
 ## Migration-required items
 
-`govna/metadata.txt` absent from an otherwise govna-adopted target classifies as `migration-required` — the repo needs an explicit one-time write of the metadata file (via `govna render-canon`/`apply`) rather than a mechanical content sync, since there's no prior version to diff against.
+`govna/metadata.txt` or `govna/canon-baseline.txt` absent from an otherwise govna-adopted target classifies as `migration-required`. Install the baseline from `govna render` only after every routing decision, sync, and validation succeeds.
+
+## Canon baseline manifest
+
+`govna/canon-baseline.txt` records the exact prior rendered comparison region for each governed file. Its first line is `govna-canon-baseline-v1`, its second line is `canon_version = vMAJOR.MINOR.PATCH`, and each sorted remaining line is `<path><TAB><scope><TAB><sha256>`. Scope is `full` or `before:<boundary-heading>`. The manifest excludes itself and is never classified as an ordinary governed file.
+
+Audit fails before emission for malformed fields, duplicate or unsorted paths, invalid hashes, unknown or mismatched scopes, or a baseline canon version newer than embedded canon. A valid manifest missing one file entry routes that divergent file to `ambiguity`. Audit leaves the baseline unchanged; the emitted AC installs or replaces it last after all other work succeeds.
 
 ## Canon-coherence precondition
 
-Before comparing anything against the target, drift-scan checks that govna's own rendered canon is internally coherent — a registry-driven, canon-only precondition (`coherence_rules()`) that would catch cases like an overlay template drifting out of sync with its authority doc. The registry ships empty today (the mechanism exists; no rule has been added yet). If a future rule fails, drift-scan skips the target comparison entirely and emits a coherence-failure report instead, since a target scan is only meaningful when the canon it's compared against is itself sound.
+Before comparing anything against the target, audit checks that govna's own rendered canon is internally coherent — a registry-driven, canon-only precondition (`coherence_rules()`) that would catch cases like an overlay template drifting out of sync with its authority doc. The registry ships empty today. If a future rule fails, audit skips target comparison and emits a coherence-failure report.
 
 ## Emitted AC stub
 
-drift-scan writes exactly one file, `govna/ac<N>-drift-scan-<canon-version>.md` (`N` allocated per the monotonic AC-numbering rule), conforming to `govna/ac-template.md`. Its `## In Scope` groups every non-`match` file into one of four buckets:
+Audit writes exactly one file, `govna/ac<N>-audit-<canon-version>.md` (`N` allocated per the monotonic AC-numbering rule), conforming to `govna/ac-template.md`. Its `## In Scope` groups every non-`match` file into one of four buckets:
 
 - **Sync** — `clear-sync`, `missing-in-target`, and any format-defining file forced to sync.
 - **Migration** — `migration-required` items, under `## Migration findings`.
 - **Out of scope** — `preserve` and `expected-divergence` items, explicitly excluded from this cycle's sync.
 - **Review** — `ambiguity` and `target-has-no-canon` items, needing a Director routing decision before either syncing or preserving.
 
-The stub carries an edit-detection marker (SHA-256 body hash). Re-running drift-scan against an unedited stub for the same canon version reuses the same AC number; running it against an edited stub fails with an error directing the Director to commit and delete the stub (to regenerate) or rename it off the `drift-scan-<version>` slug (to keep it as a standalone AC).
+The stub carries an edit-detection marker (SHA-256 body hash). Re-running audit against an unedited stub for the same canon version reuses the same AC number; running it against an edited stub fails with an error directing the Director to commit and delete the stub or rename it off the `audit-<version>` slug.
 
 Pass `--json` to also print a machine-readable report (`header`: invocation, canon SHA, target, flavor and its source, repo name, govna/code-stack versions from metadata; `files`: one entry per scanned file with its classification, diff, prior commits, matched preserve markers, canon reference, and mixed-content boundary where applicable; `emitted`: the stub's path) alongside the markdown emission.

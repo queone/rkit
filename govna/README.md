@@ -2,7 +2,7 @@
 
 Use this directory for governed implementation support documents.
 
-govna ships [`operator-contract-rationale.md`](operator-contract-rationale.md) here — read it to understand the session-entry contract that governs how agents operate in this repo. [`drift-scan.md`](drift-scan.md) documents the `govna drift-scan` command and its emitted AC stub.
+govna ships [`operator-contract-rationale.md`](operator-contract-rationale.md) here — read it to understand the session-entry contract that governs how agents operate in this repo. [`audit.md`](audit.md) documents the `govna audit` command and its emitted AC stub.
 
 See [`code-stacks.md`](code-stacks.md) for the first-class Go, Rust, Terraform, and Swift CODE stack contracts.
 

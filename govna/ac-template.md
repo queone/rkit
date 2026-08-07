@@ -12,7 +12,7 @@ Describe the change in one short paragraph. State the nature (feature, refactor,
 
 ## In Scope
 
-List the concrete changes this AC will make. Use sub-headings for grouping (e.g. "Files to create", "Files to modify", "Schema changes"). Be specific — file paths, function names, table columns. The In Scope list is the authoritative scope contract; the agent only edits files listed here even after the Director authorizes implementation. Apply the emitted-scope exception when a Director resolves a drift-scan `ambiguity` item as `sync`, or an `rm`-emitted Routing Decision; leave the emitted stub/AC unchanged.
+List the concrete changes this AC will make. Use sub-headings for grouping (e.g. "Files to create", "Files to modify", "Schema changes"). Be specific — file paths, function names, table columns. The In Scope list is the authoritative scope contract; the agent only edits files listed here even after the Director authorizes implementation. Apply the emitted-scope exception when a Director resolves a audit `ambiguity` item as `sync`, or an `rm`-emitted Routing Decision; leave the emitted stub/AC unchanged.
 
 ### Files to create
 
@@ -38,7 +38,7 @@ List things the AC explicitly does **not** do. This is as important as the In Sc
 
 ## Migration findings
 
-- Record each `migration-required` item emitted by drift-scan under `## In Scope`.
+- Record each `migration-required` item emitted by audit under `## In Scope`.
 - State the explicit consumer action that completes each migration item.
 - Keep automatic migration or deletion out of scope unless this AC explicitly authorizes it.
 

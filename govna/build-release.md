@@ -87,7 +87,7 @@ Present only the release command after prep; do not add trailing commentary abou
 CHANGELOG row shape (enforced by prep's insertion code and by convention):
 
 - File shape: `# Changelog` heading, then a 2-column markdown table (`| Version | Summary |` with a `|---------|---------|` separator); first data row is `| Unreleased | |`, followed by one row per release (e.g., `| <version> | <AC-ref>: <one-line summary> |`).
-- During a drift-scan adoption cycle, the `| Unreleased | |` row's Summary column may carry preserve marker phrases (per `govna/drift-scan.md` `## Preserve-marker phrase set`).
+- During a audit adoption cycle, the `| Unreleased | |` row's Summary column may carry preserve marker phrases (per `govna/audit.md` `## Preserve-marker phrase set`).
 - Summaries are single-line, ≤ 500 characters; lead with the AC reference if any.
 - Versions are unprefixed (`0.29.0`, not `v0.29.0`).
 - Do not backfill historical tags or invent alternative shapes (Keep-a-Changelog, sectioned `## vX.Y.Z`, etc.).

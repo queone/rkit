@@ -1,6 +1,6 @@
 # Operator Contract Rationale
 
-govna initializes AI coding-agent behavior through an explicit session-entry contract defined in [`AGENTS.md`](../AGENTS.md). This document explains the design reasoning behind that contract: why it exists, what it assumes about LLM behavior, what the `Govna contract loaded.` checkpoint is for, how drift-scan keeps the contract honest, and where the boundary between govna canon and local project rules sits.
+govna initializes AI coding-agent behavior through an explicit session-entry contract defined in [`AGENTS.md`](../AGENTS.md). This document explains the design reasoning behind that contract: why it exists, what it assumes about LLM behavior, what the `Govna contract loaded.` checkpoint is for, how audit keeps the contract honest, and where the boundary between govna canon and local project rules sits.
 
 The rationale is explanatory only. Operational rules live in `AGENTS.md`; nothing here overrides or supplements them. When this document and `AGENTS.md` appear to conflict, `AGENTS.md` wins.
 
@@ -10,7 +10,7 @@ Coding agents bring general habits — preambles, autonomous commits, scope cree
 
 The `### Session Entry` subsection of `AGENTS.md` is that signal. Six imperative bullets initialize an agent's behavior before substantive work begins: name the contract, define what counts as substantive, summarize the gate set, fix the conflict-resolution order, and require an observable readiness checkpoint. The subsection is short and austere by design; it does not restate the rules that live deeper in `AGENTS.md`, only the framing an agent needs at the moment of session entry.
 
-The value of session-entry framing is reducing drift, not eliminating it. Even capable models will miss edge cases. Drift-scan catches what slips through (see below).
+The value of session-entry framing is reducing drift, not eliminating it. Even capable models will miss edge cases. Audit catches what slips through (see below).
 
 ## LLM-Agent Behavior Assumptions
 
@@ -33,17 +33,17 @@ Two design choices matter:
 
 The checkpoint is not enforced automatically. It is a human-visible signal that the Director can scan for in completion reports. Its value is in detection of contract-skipping, not in preventing it.
 
-## Drift-Scan Verification
+## Audit Verification
 
-No prompt structure eliminates the need to verify. `govna drift-scan` is the enforcement loop — comparing a repo's current governance artifacts against what the templates would produce now, surfacing divergence the Director should resolve.
+No prompt structure eliminates the need to verify. `govna audit` is the enforcement loop — comparing a repo's current governance artifacts against what the templates would produce now, surfacing divergence the Director should resolve.
 
-Drift-scan addresses three classes of slip the session-entry rule cannot cover by itself:
+Audit addresses three classes of slip the session-entry rule cannot cover by itself:
 
 - **Canon-coherence violations** inside the govna source — where `AGENTS.md`, `templates/base/AGENTS.md`, and overlay templates have drifted apart.
 - **Adoption drift** in consumer repos — where the consumer's `AGENTS.md` has aged relative to current govna templates and the consumer agent should cherry-pick improvements.
 - **Local rule decay** — where the consumer added Project Rules and either contradicted base canon or let them rot.
 
-The session-entry rule shapes what an agent does within a session. Drift-scan keeps the across-session and across-repo picture honest. Both are needed.
+The session-entry rule shapes what an agent does within a session. Audit keeps the across-session and across-repo picture honest. Both are needed.
 
 ## Canon Versus Local Flexibility
 
@@ -57,4 +57,4 @@ Inside that constraint, adopted repos retain meaningful room:
 
 The boundary is sharp: **canon is constrained; local is open**. An adopted agent must follow the canon contract; it can also follow whatever local rules the consumer has added, in the order specified by the conflict-resolution rule (user-in-scope > `AGENTS.md` > referenced docs > model defaults).
 
-If a consumer believes a base canon rule is wrong, the path is to propose a change to govna upstream — not to rewrite the rule locally and let drift-scan complain about it forever.
+If a consumer believes a base canon rule is wrong, the path is to propose a change to govna upstream — not to rewrite the rule locally and let audit complain about it forever.
