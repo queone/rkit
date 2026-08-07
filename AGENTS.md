@@ -198,7 +198,7 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Apply mixed-content items by hunk-merge.
 - Replace canon-zone content above the boundary heading (`## Project Rules` for AGENTS.md; `## Project Practices` for `govna/development-guidelines.md` and `govna/editing-guidelines.md`).
 - Preserve the boundary heading and every line below it as repo-owned content.
-- Confirm or override the emitted validation disposition in chat.
+- Confirm or override an unresolved emitted validation disposition in chat.
 - Run the resolved validation command after all selected sync, migration, and deletion work.
 - Cite repository evidence when resolving validation as `Not applicable`.
 - Install or replace `govna/canon-baseline.txt` from the scratch render only after every other applicable acceptance test, routing outcome, and validation disposition passes.
