@@ -71,7 +71,7 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Require explicit approval for: create, delete, rename, publish, release, or any destructive change.
 - Require explicit approval for: governance files, CI/release config, secrets handling, external integrations.
 - Edit only the files listed in the AC's `## In Scope` section, even after the user has authorized implementation.
-- Apply the audit effective-scope exception in `### Audit Adoption` when a Director resolves an `ambiguity` item as `sync` (see that subsection).
+- Apply the audit effective-scope exception in `### Audit Adoption` when a Director resolves any routing action.
 - Apply the same effective-implementation-scope principle to any other emitted-AC tool with Director-resolved routing decisions (e.g., `rm`'s Routing Decisions) — the named target is in scope once resolved, even when absent from `## In Scope`.
 - Stop and ask when a request is ambiguous, or when the change is hard to reverse.
 - Wait for explicit user request before preparing, executing, publishing, deploying, or distributing — including drafting commit messages, commit commands, version bumps, or release notes.
@@ -179,8 +179,11 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 ### Audit Adoption
 
 - Apply these rules whenever implementing an audit-emitted AC.
-- Treat the named target as effective implementation scope when the Director resolves an `ambiguity` item as `sync`, even when it is absent from `## In Scope`.
-- Apply the resolved sync to the target file while leaving the emitted AC stub unchanged.
+- Treat every Director-resolved routing target as effective implementation scope, even when it is absent from `## In Scope`.
+- Treat each explicitly named migration destination as effective implementation scope with its routed source.
+- Treat `CHANGELOG.md` as effective implementation scope when a preserve marker is required.
+- Require the Director to name every migration destination.
+- Apply each resolved routing action while leaving the emitted AC stub unchanged.
 - Render canon into a scratch directory using `govna render <scratch>`.
 - Inspect changes per `## In Scope` item by running `diff -ru <scratch>/<path> <path>`.
 - Record preserve decisions in the `| Unreleased | |` row's Summary column of `CHANGELOG.md` before completing the audit adoption.
@@ -196,6 +199,12 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Run the repo-owned validation command after every selected sync.
 - Install or replace `govna/canon-baseline.txt` from the scratch render only after every routing decision, sync, and validation succeeds.
 - Do not re-run `govna audit` as an implementation gate for the emitted AC.
+- Verify each resolved sync target against its applicable rendered canon region.
+- Verify each migration source is absent unless the Director explicitly preserves it.
+- Verify each canon-backed migration destination against its applicable rendered canon region.
+- Verify each repo-owned migration destination against the Director's stated result.
+- Verify each resolved delete target is absent.
+- Verify each resolved preserve target remains and carries its preserve marker.
 
 ## File-Change Discipline
 

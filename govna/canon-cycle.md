@@ -21,6 +21,9 @@ What govna commits to when shipping canon updates:
 - Write metadata during `render`/`apply`.
 - Write `govna/canon-baseline.txt` during `render` and `apply` from deterministic comparison-region hashes.
 - Advance the consumer baseline only after every audit routing decision, selected sync, and validation succeeds.
+- Route an existing target path as retired when it remains in the prior baseline but disappears from current canon.
+- Use the bounded retired-path tombstone registry for removals that predate baseline adoption.
+- Preserve unrelated consumer-owned governance documents unless another bounded target-only evidence source identifies them.
 
 ## Consumer-side workflow
 

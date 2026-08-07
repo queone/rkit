@@ -36,7 +36,7 @@ Each canon-governed file gets exactly one of 8 classifications, decided by an or
 
 `govna/metadata.txt` gets metadata-specific handling layered on top. An absent file is forced to `migration-required` regardless of the byte-comparison result (see Migration-required items). A present `canon_version` must use strict `vMAJOR.MINOR.PATCH` form. When the target version is lower than embedded canon and replacing only that field makes the whole file byte-equal to rendered canon, the file is forced to `clear-sync` regardless of git history or a metadata preserve marker. Other metadata differences remain whole-file review items. A malformed version fails before AC emission; a target version newer than embedded canon also fails and directs the operator to upgrade govna rather than downgrade consumer metadata.
 
-Files with no canon counterpart in the target's own flavor route to `target-has-no-canon` (see Cross-flavor orphan detection) rather than through this ordered check.
+Retired and otherwise evidenced target files with no canon counterpart in the target's own flavor route to `target-has-no-canon` (see Target-only detection) rather than through this ordered check.
 
 ## Format-defining files
 
@@ -67,9 +67,13 @@ A Director locks a local variant against future sync by placing one of these fou
 
 A marker on a missing file suppresses `missing-in-target` to a suppressed `match`; a marker on a divergent file routes it to `preserve` instead of `ambiguity`/`clear-sync`. The sole exception is an eligible stale-version-only `govna/metadata.txt`, whose canon-owned `canon_version` cannot be pinned by a preserve marker.
 
-## Cross-flavor orphan detection
+## Target-only detection
 
-Files present under the target's `govna/` tree with no canon counterpart in the target's own flavor classify as `target-has-no-canon`. This also catches files name-referenced (by path, in backticks or quotes) from an already-divergent target file but themselves absent from both the target's own flavor canon and the other flavor's canon — surfacing orphaned governance docs that drifted out of the shipped canon set entirely.
+Audit classifies an existing target as `target-has-no-canon` when the path is absent from current flavor canon and at least one bounded evidence source identifies it: the valid prior baseline, the pre-baseline retired-path tombstone registry, other-flavor canon, or a path reference from an already-divergent governed file. Evidence is merged by target path with tombstone replacement metadata retained, then emitted in deterministic path order.
+
+The tombstone registry bridges removals that predate baseline adoption. It currently records `govna/drift-scan.md` as replaced by `govna/audit.md`. Audit recommends deleting the retired path only when the replacement is present; otherwise it recommends restoring or migrating the replacement first.
+
+Audit does not flag arbitrary consumer-owned governance documents that have none of these evidence sources. Audit never deletes or migrates a target file itself.
 
 ## Migration-required items
 
@@ -95,5 +99,7 @@ Audit writes exactly one file, `govna/ac<N>-audit-<canon-version>.md` (`N` alloc
 - **Review** — `ambiguity` and `target-has-no-canon` items, needing a Director routing decision before either syncing or preserving.
 
 The stub carries an edit-detection marker (SHA-256 body hash). Re-running audit against an unedited stub for the same canon version reuses the same AC number; running it against an edited stub fails with an error directing the Director to commit and delete the stub or rename it off the `audit-<version>` slug.
+
+Every Director-resolved routing target becomes effective implementation scope while the emitted stub remains unchanged. Explicitly named migration destinations join that scope, and `CHANGELOG.md` joins it when a preserve marker is required. Emitted acceptance tests verify sync, migration, deletion, and preservation according to the resolved outcome; the rendered-canon blanket covers declared sync items, routing targets resolved as sync, and canon-backed migration destinations.
 
 Pass `--json` to also print a machine-readable report (`header`: invocation, canon SHA, target, flavor and its source, repo name, govna/code-stack versions from metadata; `files`: one entry per scanned file with its classification, diff, prior commits, matched preserve markers, canon reference, and mixed-content boundary where applicable; `emitted`: the stub's path) alongside the markdown emission.
