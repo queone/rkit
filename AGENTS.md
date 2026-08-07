@@ -130,10 +130,12 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Report every residual risk in the Implement completion report.
 - State zero unresolved implementation findings in the Implement completion report before Ratify.
 - Pause after Implement and await Ratify.
-- Treat Ratify as the Director's final review of the delivered AC.
-- Return Ratify feedback to Refine for contract or scope changes.
-- Return Ratify feedback to Implement for implementation-only corrections.
-- Keep Ratify complete only after the Director accepts the delivered work.
+- Treat standalone `Ratify` or `ratify` after successful Implement completion as the Director's acceptance action.
+- Perform the final non-mutating review during the same Ratify turn.
+- Complete Ratify in that turn when the review finds no issue.
+- Return Ratify feedback to Refine for contract or scope changes without completing Ratify.
+- Return Ratify feedback to Implement for implementation-only corrections without completing Ratify.
+- Skip requests for a second acceptance signal after a clean Ratify review.
 - Treat `Package` as the separate post-Ratify name for release preparation, not as a fifth AC phase.
 - Start `Package` only after an explicit Director request; do not infer it from Ratify acceptance.
 - Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent names for `Package` only after Ratify acceptance.
@@ -196,8 +198,10 @@ Note: prefer wording that is easiest for an LLM to follow, while staying simple 
 - Apply mixed-content items by hunk-merge.
 - Replace canon-zone content above the boundary heading (`## Project Rules` for AGENTS.md; `## Project Practices` for `govna/development-guidelines.md` and `govna/editing-guidelines.md`).
 - Preserve the boundary heading and every line below it as repo-owned content.
-- Run the repo-owned validation command after every selected sync.
-- Install or replace `govna/canon-baseline.txt` from the scratch render only after every routing decision, sync, and validation succeeds.
+- Confirm or override the emitted validation disposition in chat.
+- Run the resolved validation command after all selected sync, migration, and deletion work.
+- Cite repository evidence when resolving validation as `Not applicable`.
+- Install or replace `govna/canon-baseline.txt` from the scratch render only after every other applicable acceptance test, routing outcome, and validation disposition passes.
 - Do not re-run `govna audit` as an implementation gate for the emitted AC.
 - Verify each resolved sync target against its applicable rendered canon region.
 - Verify each migration source is absent unless the Director explicitly preserves it.

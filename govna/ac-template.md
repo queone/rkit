@@ -47,13 +47,13 @@ List things the AC explicitly does **not** do. This is as important as the In Sc
 Every AT carries a source axis and a timing axis.
 
 - **Source axis** — `[Automated]` or `[Manual]`. Default to `[Automated]` whenever the result is verifiable without a live external service; reserve `[Manual]` for behaviors that genuinely cannot be checked any other way.
-- **Timing axis** — `[Pre-release gate]` (default; may be omitted) or `[Post-release verification]` (explicit). Use `[Post-release verification]` only when automated regression coverage already gates pre-release on the underlying class.
+- **Timing axis** — `[Pre-release gate]` or `[Post-release verification]`; always write the selected label explicitly. Use `[Post-release verification]` only when automated regression coverage already gates pre-release on the underlying class.
 
-**AT1** [Automated] — One-line description of what is verified, with the exact check (file existence, grep pattern, SQL query, or CLI output).
+**AT1** [Automated] [Pre-release gate] — One-line description of what is verified, with the exact check (file existence, grep pattern, SQL query, or CLI output).
 
-**AT2** [Automated] — ...
+**AT2** [Automated] [Pre-release gate] — ...
 
-**AT3** [Manual] — One-line description plus the live action the user must take to confirm the result.
+**AT3** [Manual] [Pre-release gate] — One-line description plus the live action the user must take to confirm the result.
 
 ## Status
 

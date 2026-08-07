@@ -77,7 +77,7 @@ Audit does not flag arbitrary consumer-owned governance documents that have none
 
 ## Migration-required items
 
-`govna/metadata.txt` or `govna/canon-baseline.txt` absent from an otherwise govna-adopted target classifies as `migration-required`. Install the baseline from `govna render` only after every routing decision, sync, and validation succeeds.
+`govna/metadata.txt` or `govna/canon-baseline.txt` absent from an otherwise govna-adopted target classifies as `migration-required`. Every emitted AC includes `## Migration findings` after `## Out Of Scope`: it lists each migration path and completion action, or `None` when no migration exists. Migration paths also remain under `## In Scope`.
 
 ## Canon baseline manifest
 
@@ -91,7 +91,7 @@ Before comparing anything against the target, audit checks that govna's own rend
 
 ## Emitted AC stub
 
-Audit writes exactly one file, `govna/ac<N>-audit-<canon-version>.md` (`N` allocated per the monotonic AC-numbering rule), conforming to `govna/ac-template.md`. Its `## In Scope` groups every non-`match` file into one of four buckets:
+Audit emits `govna/ac<N>-audit-<canon-version>.md` (`N` allocated per the monotonic AC-numbering rule) only when the completed report contains actionable work. Clear-sync, missing-target, migration-required, ambiguity, target-has-no-canon, and format-defining forced-sync results are actionable. Match, expected-divergence, and ordinary preserve results are non-actionable. An emitted AC conforms to `govna/ac-template.md`, and its `## In Scope` groups every non-`match` file into one of four buckets:
 
 - **Sync** — `clear-sync`, `missing-in-target`, and any format-defining file forced to sync.
 - **Migration** — `migration-required` items, under `## Migration findings`.
@@ -100,6 +100,12 @@ Audit writes exactly one file, `govna/ac<N>-audit-<canon-version>.md` (`N` alloc
 
 The stub carries an edit-detection marker (SHA-256 body hash). Re-running audit against an unedited stub for the same canon version reuses the same AC number; running it against an edited stub fails with an error directing the Director to commit and delete the stub or rename it off the `audit-<version>` slug.
 
-Every Director-resolved routing target becomes effective implementation scope while the emitted stub remains unchanged. Explicitly named migration destinations join that scope, and `CHANGELOG.md` joins it when a preserve marker is required. Emitted acceptance tests verify sync, migration, deletion, and preservation according to the resolved outcome; the rendered-canon blanket covers declared sync items, routing targets resolved as sync, and canon-backed migration destinations.
+A non-actionable audit exits successfully, prints the classification tally followed by `no AC emitted`, and performs no AC-number allocation, stub inspection, directory creation, or file write. It never deletes, overwrites, or validates an existing audit stub. With `--json`, the complete report remains available and `emitted` is `null`; no additional prose is written.
 
-Pass `--json` to also print a machine-readable report (`header`: invocation, canon SHA, target, flavor and its source, repo name, govna/code-stack versions from metadata; `files`: one entry per scanned file with its classification, diff, prior commits, matched preserve markers, canon reference, and mixed-content boundary where applicable; `emitted`: the stub's path) alongside the markdown emission.
+Every Director-resolved routing target becomes effective implementation scope while the emitted stub remains unchanged. Explicitly named migration destinations join that scope, and `CHANGELOG.md` joins it when a preserve marker is required. When baseline migration is present, routing also proposes a validation disposition for explicit Director confirmation or override in chat: CODE proposes `./build.sh`; DOC proposes `Not applicable` because standard DOC canon declares no automated content-validation command. A `Not applicable` resolution requires repository evidence, and a repository-declared validation command overrides the flavor proposal.
+
+Emitted acceptance tests verify sync, migration, deletion, and preservation according to the resolved outcome. The pre-install rendered-canon blanket covers declared sync items except `govna/canon-baseline.txt`, routing targets resolved as sync, and canon-backed migration destinations. After all selected work, the resolved validation command must succeed, or the `Not applicable` evidence must hold. Only after every other applicable automated AT and routing outcome passes does the baseline get installed and verified separately from the same scratch render as the final adoption step.
+
+Every audit-emitted AT carries exactly one source axis and one explicit timing axis. Current audit ATs use `[Automated] [Pre-release gate]` or `[Manual] [Pre-release gate]`; none defer verification until after release.
+
+Pass `--json` to print a machine-readable report (`header`: invocation, canon SHA, target, flavor and its source, repo name, govna/code-stack versions from metadata; `files`: one entry per scanned file with its classification, diff, prior commits, matched preserve markers, canon reference, and mixed-content boundary where applicable; `emitted`: the stub's path for actionable reports or `null` for clean reports).

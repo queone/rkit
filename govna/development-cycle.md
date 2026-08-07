@@ -9,7 +9,7 @@ This repo uses an acceptance-criteria-first workflow.
 - Treat standalone `Audit` or `audit` as the adversarial-review phase action that starts the active AC cycle.
 - Treat standalone `Refine` or `refine` as the scope-and-decision-resolution phase action.
 - Treat standalone `Implement` or `implement` as the implementation-and-verification phase action.
-- Treat standalone `Ratify` or `ratify` as the Director acceptance phase action.
+- Treat standalone `Ratify` or `ratify` as the Director acceptance action that initiates the final review and completes Ratify when that review is clean.
 - Treat standalone `Package`, `package`, `pack`, and `prep` as equivalent post-Ratify release-preparation actions; do not infer Package from Ratify acceptance.
 - Start a cycle only when the director identifies the active AC and explicitly
   requests Audit.
@@ -32,7 +32,7 @@ This repo uses an acceptance-criteria-first workflow.
 3. **Audit the draft.** Challenge the AC, repository behavior, referenced documentation, scope, edge cases, omissions, and testability without editing the AC or repository. Pause for explicit Director advancement to Refine.
 4. **Refine the AC.** Resolve Audit findings and settle Director decisions by editing the AC. Pause when a decision remains unresolved; treat the AC as implementation-ready only after explicit Director confirmation to Implement.
 5. **Implement the settled scope.** Implement code, tests, and direct doc updates together; run validation, adversarial verification, defect correction, and the closure audit. Pause for Ratify.
-6. **Ratify the delivered AC.** The Director reviews and accepts the delivered work; return contract or scope feedback to Refine and implementation-only feedback to Implement.
+6. **Ratify the delivered AC.** Treat standalone Ratify as acceptance, complete it in the same turn after a clean review, and request no second acceptance signal. Return contract or scope feedback to Refine and implementation-only feedback to Implement without completing Ratify.
 7. **Perform Package only when explicitly requested.** Accept standalone `Package`, `package`, `pack`, or `prep` only after Ratify acceptance; follow `govna/build-release.md` for the existing checklist and implementation.
 
 ## Notes

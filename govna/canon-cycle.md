@@ -20,7 +20,7 @@ What govna commits to when shipping canon updates:
 - govna has no legacy marker file to accept during a compatibility window — it never shipped one.
 - Write metadata during `render`/`apply`.
 - Write `govna/canon-baseline.txt` during `render` and `apply` from deterministic comparison-region hashes.
-- Advance the consumer baseline only after every audit routing decision, selected sync, and validation succeeds.
+- Advance the consumer baseline only after every other applicable acceptance test, resolved routing outcome, and resolved validation disposition passes.
 - Route an existing target path as retired when it remains in the prior baseline but disappears from current canon.
 - Use the bounded retired-path tombstone registry for removals that predate baseline adoption.
 - Preserve unrelated consumer-owned governance documents unless another bounded target-only evidence source identifies them.
@@ -36,7 +36,7 @@ What consumers do when receiving canon updates:
 5. **Boundary-aware mixed-content files.** Files with a documented canon-above/local-below boundary that adopters merge by hand: `AGENTS.md` (boundary `## Project Rules`), `govna/development-guidelines.md` and `govna/editing-guidelines.md` (boundary `## Project Practices`). Files without a named canon boundary (e.g., `README.md`, `CHANGELOG.md`, `plan.md`) would be handled by the expected-divergence registry or preserve markers — see `govna/audit.md` `## Expected-divergence registry` and `## Preserve-marker phrase set`.
 6. **Canon-above-local-below structure.** Mixed-content files SHOULD use the canon-above-local-below structure: canon sections at the top (govna-maintained, replaced at sync), and a single named project-extension section at the bottom (repo-maintained, untouched at sync). AGENTS.md uses `## Project Rules`; `govna/development-guidelines.md` and `govna/editing-guidelines.md` use `## Project Practices`. The named tail makes hunk-merge mechanical: replace canon zone wholesale, leave the tail alone.
 7. **Why hand-merge rather than tool-automated sync.** Mixed-content files (AGENTS.md, development-guidelines.md, editing-guidelines.md) are intended to be merged by hand using the canon-above-local-below boundary because LLM-capable agents (the primary consumers) handle structured doc edits reliably from documented conventions. Documenting the convention is the durable answer; the tool stays focused on the canon-render primitive.
-8. **Baseline completion.** Install or replace `govna/canon-baseline.txt` from the same scratch render only after all other adoption work and validation succeeds; do not require an immediate audit rerun.
+8. **Baseline completion.** Exclude `govna/canon-baseline.txt` from pre-install rendered-canon comparisons. Install and verify it separately from the same scratch render only after all other applicable acceptance tests, resolved routing outcomes, and the resolved validation disposition pass; do not require an immediate audit rerun.
 
 ## Canon-owned vs repo-owned handling
 
