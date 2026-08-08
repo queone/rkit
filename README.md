@@ -401,6 +401,10 @@ Configuration is read from the nearest `attune.yaml`; precedence is flag,
 environment, configuration file, then built-in default. DNS pruning defaults
 to enabled. Identity, role, and resource-group pruning default to disabled and
 must be enabled explicitly with their corresponding flags or configuration.
+Role assignments accept `group` and its case-insensitive `securityGroup` alias,
+`servicePrincipal`, or `user` as `principalType`. A literal directory object ID
+may omit `principalType`; a named principal must provide it, and `attune
+validate` enforces this rule offline.
 
 Normal plans print resource keys and concise summaries, but omit DNS values,
 tag values, memberships, owners, role actions, credentials, and provider

@@ -94,9 +94,17 @@ pub fn load(directory: &Path) -> Result<Bundle, String> {
                     map,
                     &["kind", "principal", "principalType", "role", "scope"],
                 )?;
+                let principal = required_string(map, "principal")?;
+                let principal_type = optional_string(map, "principalType")?;
+                if principal_type.is_empty() && !is_directory_object_id(&principal) {
+                    return Err(
+                        "principalType is required for a named principal; use group, securityGroup, servicePrincipal, or user"
+                            .into(),
+                    );
+                }
                 let item = RoleAssignment {
-                    principal: required_string(map, "principal")?,
-                    principal_type: required_string(map, "principalType")?,
+                    principal,
+                    principal_type,
                     role: required_string(map, "role")?,
                     scope: required_scope(map, "scope")?,
                 };
@@ -185,6 +193,16 @@ fn optional_string(map: &Hash, name: &str) -> Result<String, String> {
         Some(Yaml::String(value)) => Ok(value.clone()),
         _ => Err(format!("{name} must be a string")),
     }
+}
+
+pub(crate) fn is_directory_object_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit())
 }
 fn required_i64(map: &Hash, name: &str) -> Result<i64, String> {
     match map.get(&key(name)) {
@@ -279,5 +297,22 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/attune/specs");
         let bundle = load(&root).unwrap();
         assert_eq!(bundle.len(), 6);
+    }
+
+    #[test]
+    fn directory_object_id_requires_the_exact_uuid_shape() {
+        assert!(is_directory_object_id(
+            "00000000-0000-0000-0000-000000000001"
+        ));
+        assert!(is_directory_object_id(
+            "ABCDEF00-1234-5678-9ABC-DEF012345678"
+        ));
+        assert!(!is_directory_object_id("synthetic-principal"));
+        assert!(!is_directory_object_id(
+            "000000000000-0000-0000-0000-000000000001"
+        ));
+        assert!(!is_directory_object_id(
+            "00000000-0000-0000-0000-00000000000z"
+        ));
     }
 }

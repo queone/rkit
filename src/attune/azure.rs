@@ -2,6 +2,7 @@
 
 use super::model::*;
 use super::reconcile::{LiveAssignment, Provider};
+use super::spec::is_directory_object_id;
 use crate::pman::{HttpRequest, HttpTransport, TcpHttpTransport};
 use openssl::sha::sha1;
 use serde_json::{Value, json};
@@ -466,14 +467,19 @@ impl<C: AzureCli, H: HttpTransport> Provider for AzureProvider<C, H> {
             .map(|_| ())
     }
     fn resolve_principal(&mut self, name: &str, principal_type: &str) -> Result<String, String> {
-        if is_uuid(name) {
+        if is_directory_object_id(name) {
             return Ok(name.into());
         }
         let collection = match principal_type.to_ascii_lowercase().as_str() {
             "group" | "securitygroup" => "groups",
             "serviceprincipal" => "servicePrincipals",
             "user" => "users",
-            _ => return Err("unknown principalType; use group, servicePrincipal, or user".into()),
+            _ => {
+                return Err(
+                    "unknown principalType; use group, securityGroup, servicePrincipal, or user"
+                        .into(),
+                );
+            }
         };
         self.find_id(collection, "displayName", name)?
             .ok_or_else(|| format!("{principal_type} was not found"))
@@ -597,15 +603,6 @@ fn percent_encode(value: &str) -> String {
             }
         })
         .collect()
-}
-fn is_uuid(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() == 36
-        && [8, 13, 18, 23].iter().all(|index| bytes[*index] == b'-')
-        && bytes
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| [8, 13, 18, 23].contains(&index) || byte.is_ascii_hexdigit())
 }
 fn deterministic_uuid(value: &str) -> String {
     const URL_NAMESPACE: [u8; 16] = [
@@ -827,6 +824,69 @@ fn encode_dns(record: &DnsRecord) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pman::HttpResponse;
+    use std::cell::RefCell;
+    use std::io;
+    use std::rc::Rc;
+
+    struct SyntheticCli;
+
+    impl AzureCli for SyntheticCli {
+        fn account(&self) -> Result<Account, String> {
+            Ok(Account::default())
+        }
+
+        fn token(&self, _: &str) -> Result<String, String> {
+            Ok("synthetic-token".into())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct SyntheticTransport {
+        urls: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl HttpTransport for SyntheticTransport {
+        fn send(&self, request: &HttpRequest) -> io::Result<HttpResponse> {
+            self.urls.borrow_mut().push(request.url.clone());
+            Ok(HttpResponse {
+                status: 200,
+                body: br#"{"value":[{"id":"00000000-0000-0000-0000-000000000002"}]}"#.to_vec(),
+            })
+        }
+    }
+
+    #[test]
+    fn security_group_alias_uses_group_lookup_case_insensitively() {
+        let transport = SyntheticTransport::default();
+        let urls = Rc::clone(&transport.urls);
+        let mut provider =
+            AzureProvider::with(SyntheticCli, transport, String::new(), String::new());
+
+        let id = provider
+            .resolve_principal("synthetic-group", "SeCuRiTyGrOuP")
+            .unwrap();
+
+        assert_eq!(id, "00000000-0000-0000-0000-000000000002");
+        assert_eq!(urls.borrow().len(), 1);
+        assert!(urls.borrow()[0].contains("/groups?"));
+    }
+
+    #[test]
+    fn literal_principal_id_skips_directory_lookup_without_a_type() {
+        let transport = SyntheticTransport::default();
+        let urls = Rc::clone(&transport.urls);
+        let mut provider =
+            AzureProvider::with(SyntheticCli, transport, String::new(), String::new());
+        let principal = "00000000-0000-0000-0000-000000000003";
+
+        assert_eq!(
+            provider.resolve_principal(principal, "").unwrap(),
+            principal
+        );
+        assert!(urls.borrow().is_empty());
+    }
+
     #[test]
     fn origin_encoding_is_strict() {
         assert_eq!(percent_encode("a b/'"), "a%20b%2F%27");
