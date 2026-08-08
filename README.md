@@ -383,6 +383,32 @@ this deliberately diverges from the Go original, which had no help flag. The
 HTTP client is a minimal standard-library implementation using the pinned
 OpenSSL dependency for TLS; no new dependency was added.
 
+## attune
+
+`attune` reconciles Azure Resource Manager and Microsoft Graph resources from
+provider-neutral YAML specifications. It supports DNS record sets, security
+groups, app registrations, role definitions, role assignments, and resource
+groups without a local state file.
+
+```text
+attune validate              # validate specs offline
+attune plan                  # read live state and show changes
+attune apply                 # create, update, and permitted prune operations
+```
+
+Live commands require an authenticated Azure CLI session from `az login`.
+Configuration is read from the nearest `attune.yaml`; precedence is flag,
+environment, configuration file, then built-in default. DNS pruning defaults
+to enabled. Identity, role, and resource-group pruning default to disabled and
+must be enabled explicitly with their corresponding flags or configuration.
+
+Normal plans print resource keys and concise summaries, but omit DNS values,
+tag values, memberships, owners, role actions, credentials, and provider
+response bodies. `-d`/`--diagnostic` adds non-secret account and target
+grounding. Attune writes no local state, cache, telemetry, copied specs, or
+diagnostic artifacts; serviced-repository data is sent only to the configured
+Azure provider endpoints during an operator-requested live command.
+
 ## Tree
 
 ```text

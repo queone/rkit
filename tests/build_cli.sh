@@ -170,10 +170,21 @@ test_prep_no_build_rejection() {
   pass
 }
 
+test_attune_manifest_registration() {
+  local target found=0
+  _load_bin_targets
+  for target in "${_bin_targets[@]}"; do
+    [ "$target" = attune ] && found=1
+  done
+  assert_equal "$found" 1
+  pass
+}
+
 test_utility_declaration_validation
 test_compiled_version_output
 test_manifest_path_mapping
 test_install_reporting
 test_prep_no_build_rejection
+test_attune_manifest_registration
 
 printf 'build CLI tests: %d passed\n' "$test_count"

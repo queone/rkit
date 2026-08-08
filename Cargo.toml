@@ -1,6 +1,6 @@
 [package]
 name = "rkit"
-version = "1.15.0"
+version = "1.16.0"
 edition = "2024"
 
 [dependencies]
@@ -134,3 +134,7 @@ path = "src/bin/cash5.rs"
 [[bin]]
 name = "swatch"
 path = "src/bin/swatch.rs"
+
+[[bin]]
+name = "attune"
+path = "src/bin/attune.rs"

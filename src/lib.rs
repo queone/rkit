@@ -1,5 +1,6 @@
 //! Testable behavior shared by the `rkit` package binaries.
 
+pub mod attune;
 pub mod bak;
 pub mod brew_update;
 pub mod cash5;
