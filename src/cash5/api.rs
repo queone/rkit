@@ -8,13 +8,10 @@ use crate::cash5::dates::{self, CivilDate};
 use crate::cash5::model::{self, Draw, DrawResult};
 use crate::color::{ColorMode, RED3};
 use crate::pman::{HttpRequest, HttpResponse, HttpTransport};
-use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslVerifyMode};
-use openssl::x509::X509;
 use scraper::{CaseSensitivity, ElementRef, Html, Selector};
 use std::collections::HashSet;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::process::Command;
 use std::time::Duration;
 
 const BASE_URL: &str = "https://www.njlottery.com/api/v1/draw-games/draws/page";
@@ -237,9 +234,8 @@ fn parse_single_lottonumbers_draw(
 }
 
 /// Minimal HTTPS/1.1 client with a fixed 15-30s timeout, driving the
-/// shared `pman` request/response types. Duplicated from `web.rs`'s
-/// equivalent transport (out of this AC's file scope, and not `pub`)
-/// rather than shared.
+/// shared `pman` request/response types. TCP timeout and response parsing
+/// stay local while TLS trust is shared.
 pub struct TimeoutHttpTransport {
     pub timeout: Duration,
 }
@@ -267,11 +263,7 @@ impl HttpTransport for TimeoutHttpTransport {
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
 
-        let mut builder = SslConnector::builder(SslMethod::tls())
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        builder.set_verify(SslVerifyMode::PEER);
-        configure_trust(&mut builder).map_err(io::Error::other)?;
-        let connector = builder.build();
+        let connector = crate::tls::connector().map_err(io::Error::other)?;
         let mut tls = connector
             .connect(&host, stream)
             .map_err(|error| io::Error::other(error.to_string()))?;
@@ -281,79 +273,6 @@ impl HttpTransport for TimeoutHttpTransport {
         }
         read_response(&mut tls)
     }
-}
-
-/// Loads trusted root certificates: vendored OpenSSL default paths first,
-/// falling back to macOS's System Root keychain — vendored/statically-
-/// linked OpenSSL doesn't automatically see the macOS Keychain otherwise.
-/// Adapted from `certls.rs`/`web.rs` (duplicated rather than reused, since
-/// neither is in this AC's file scope nor exposes these as `pub`).
-fn configure_trust(builder: &mut SslConnectorBuilder) -> Result<(), String> {
-    let default_error = builder
-        .set_default_verify_paths()
-        .err()
-        .map(|error| error.to_string());
-
-    #[cfg(target_os = "macos")]
-    {
-        let keychain_error = load_macos_keychain_roots(builder).err();
-        if default_error.is_some() && keychain_error.is_some() {
-            return Err(format!(
-                "default paths: {}; macOS keychain: {}",
-                default_error.unwrap_or_default(),
-                keychain_error.unwrap_or_default()
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    default_error.map_or(Ok(()), Err)
-}
-
-#[cfg(target_os = "macos")]
-fn load_macos_keychain_roots(builder: &mut SslConnectorBuilder) -> Result<usize, String> {
-    let keychains = [
-        "/System/Library/Keychains/SystemRootCertificates.keychain",
-        "/Library/Keychains/System.keychain",
-    ];
-    let mut loaded = 0;
-    let mut last_error = None;
-    for path in keychains {
-        let output = match Command::new("/usr/bin/security")
-            .args(["find-certificate", "-a", "-p", path])
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) => {
-                last_error = Some(error.to_string());
-                continue;
-            }
-        };
-        if !output.status.success() {
-            last_error = Some(String::from_utf8_lossy(&output.stderr).trim().to_string());
-            continue;
-        }
-        match add_pem_certificates(builder, &output.stdout) {
-            Ok(count) => loaded += count,
-            Err(error) => last_error = Some(error),
-        }
-    }
-    if loaded == 0 {
-        return Err(last_error.unwrap_or_else(|| "no macOS keychain certificates found".into()));
-    }
-    Ok(loaded)
-}
-
-fn add_pem_certificates(builder: &mut SslConnectorBuilder, pem: &[u8]) -> Result<usize, String> {
-    let certificates = X509::stack_from_pem(pem).map_err(|error| error.to_string())?;
-    let mut loaded = 0;
-    for certificate in certificates {
-        if builder.cert_store_mut().add_cert(certificate).is_ok() {
-            loaded += 1;
-        }
-    }
-    Ok(loaded)
 }
 
 fn split_https_url(url: &str) -> Result<(String, String), String> {

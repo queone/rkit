@@ -70,7 +70,7 @@ fn version_is_terminal_and_exact() {
     let home = temp_home();
     let output = sms_command(&home).arg("--version").output().unwrap();
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"sms v2.0.0\n");
+    assert_eq!(output.stdout, b"sms v2.0.1\n");
     assert!(output.stderr.is_empty());
     fs::remove_dir_all(home).unwrap();
 }
@@ -236,7 +236,7 @@ fn unreachable_svcurl_reports_error_and_exits_one() {
 fn documentation_describes_sms_behavior() {
     let readme = include_str!("../README.md");
     assert!(readme.contains("## sms"));
-    assert!(readme.contains("sms v2.0.0"));
+    assert!(readme.contains("sms v2.0.1"));
     let arch = include_str!("../arch.md");
     assert!(arch.contains("### sms"));
 }

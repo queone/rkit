@@ -221,7 +221,7 @@ fn readme_documents_ordered_macos_setup_and_both_binaries() {
             .unwrap_or_else(|| panic!("README is missing {expected:?}"));
         previous += offset + expected.len();
     }
-    assert!(readme.contains("## Tree"));
-    assert!(readme.contains("## dos2unix"));
+    assert!(readme.contains("### tree"));
+    assert!(readme.contains("### dos2unix"));
     assert!(readme.contains("partially\nwritten"));
 }

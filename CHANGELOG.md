@@ -3,6 +3,7 @@
 | Version | Summary |
 |---------|---------|
 | Unreleased | AC2 ports the tree utility to a standard-library-only Rust binary with deterministic traversal, skipped-descendant warnings, contextual root failures, compatibility output, isolated builds, and Cargo installation; AC5 ports dos2unix with byte-safe preview and conversion, explicit multi-binary layout, contextual failures, and macOS toolchain setup; AC6 adds space-separated scoped Rust builds while preserving package-wide release validation; preserve README.md project content; preserve CHANGELOG.md project history |
+| 1.16.2 | AC50: share verified TLS trust and reorganize utility docs |
 | 1.16.1 | AC49: restore attune principal compatibility |
 | 1.16.0 | AC48: add attune Azure reconciler |
 | 1.15.0 | AC47: add swatch xterm palette and ramp inspector |

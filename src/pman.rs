@@ -1,6 +1,6 @@
 //! Azure REST API calling behavior for the `pman` utility.
 
-use openssl::ssl::{SslConnector, SslMethod};
+use crate::tls;
 use std::ffi::OsString;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -62,9 +62,7 @@ impl HttpTransport for TcpHttpTransport {
         let stream = TcpStream::connect(&address)?;
 
         if parsed.scheme == "https" {
-            let connector = SslConnector::builder(SslMethod::tls())
-                .map_err(|error| io::Error::other(error.to_string()))?
-                .build();
+            let connector = tls::connector().map_err(io::Error::other)?;
             let mut tls = connector
                 .connect(&parsed.host, stream)
                 .map_err(|error| io::Error::other(error.to_string()))?;

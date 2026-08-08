@@ -300,6 +300,10 @@ Note: `CLAUDE.md` is an example of an exempt identifier — it names the Claude 
 
 ## Project Rules
 
+### TLS Trust
+
+- Route every production TLS client connector through `crate::tls`.
+
 ### Benchmarking
 
 - Follow `benchmarking/rust-vs-go.md` whenever the Director explicitly requests a Go/Rust performance comparison, including “benchmark Go versus Rust,” “compare the Go and Rust ports,” or “rerun the Rust/Go performance comparison.”

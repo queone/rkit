@@ -12,8 +12,6 @@
 use crate::mdview::BrowserOpener;
 use crate::pman::{HttpRequest, HttpResponse, HttpTransport};
 use nucleo_picker::{Picker, Render};
-use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslVerifyMode};
-use openssl::x509::X509;
 use scraper::{Html, Selector};
 use serde_json::{Map, Value};
 use std::env;
@@ -143,9 +141,7 @@ impl ResultPicker for InteractivePicker {
 
 /// Minimal HTTPS/1.1 client with a configurable connect/read/write
 /// timeout, driving the shared `pman` [`HttpRequest`]/[`HttpResponse`]
-/// types. `pman.rs` has an equivalent transport but neither it nor its
-/// response-parsing helpers are `pub`, and it's outside this AC's file
-/// scope — duplicated here rather than modified there.
+/// types. TCP timeout and response parsing stay local while TLS trust is shared.
 struct TimeoutHttpTransport {
     timeout: Duration,
 }
@@ -174,11 +170,7 @@ impl HttpTransport for TimeoutHttpTransport {
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
 
-        let mut builder = SslConnector::builder(SslMethod::tls())
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        builder.set_verify(SslVerifyMode::PEER);
-        configure_trust(&mut builder).map_err(io::Error::other)?;
-        let connector = builder.build();
+        let connector = crate::tls::connector().map_err(io::Error::other)?;
         let mut tls = connector
             .connect(&host, stream)
             .map_err(|error| io::Error::other(error.to_string()))?;
@@ -188,84 +180,6 @@ impl HttpTransport for TimeoutHttpTransport {
         }
         read_response(&mut tls)
     }
-}
-
-/// Loads trusted root certificates: the vendored OpenSSL default paths
-/// first, falling back to exporting macOS's System Root keychain when
-/// those are absent or insufficient — vendored/statically-linked OpenSSL
-/// doesn't automatically see the macOS Keychain's trusted roots
-/// otherwise. Adapted from `certls.rs`'s `configure_trust`/
-/// `load_macos_keychain_roots`/`add_pem_certificates` (duplicated here
-/// rather than reused, since `certls.rs` isn't in this AC's file scope
-/// and doesn't expose them as `pub`). Confirmed necessary by a live
-/// smoke test against `html.duckduckgo.com`, which failed TLS
-/// verification with the bare default-paths-only connector.
-fn configure_trust(builder: &mut SslConnectorBuilder) -> Result<(), String> {
-    let default_error = builder
-        .set_default_verify_paths()
-        .err()
-        .map(|error| error.to_string());
-
-    #[cfg(target_os = "macos")]
-    {
-        let keychain_error = load_macos_keychain_roots(builder).err();
-        if default_error.is_some() && keychain_error.is_some() {
-            return Err(format!(
-                "default paths: {}; macOS keychain: {}",
-                default_error.unwrap_or_default(),
-                keychain_error.unwrap_or_default()
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    default_error.map_or(Ok(()), Err)
-}
-
-#[cfg(target_os = "macos")]
-fn load_macos_keychain_roots(builder: &mut SslConnectorBuilder) -> Result<usize, String> {
-    let keychains = [
-        "/System/Library/Keychains/SystemRootCertificates.keychain",
-        "/Library/Keychains/System.keychain",
-    ];
-    let mut loaded = 0;
-    let mut last_error = None;
-    for path in keychains {
-        let output = match Command::new("/usr/bin/security")
-            .args(["find-certificate", "-a", "-p", path])
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) => {
-                last_error = Some(error.to_string());
-                continue;
-            }
-        };
-        if !output.status.success() {
-            last_error = Some(String::from_utf8_lossy(&output.stderr).trim().to_string());
-            continue;
-        }
-        match add_pem_certificates(builder, &output.stdout) {
-            Ok(count) => loaded += count,
-            Err(error) => last_error = Some(error),
-        }
-    }
-    if loaded == 0 {
-        return Err(last_error.unwrap_or_else(|| "no macOS keychain certificates found".into()));
-    }
-    Ok(loaded)
-}
-
-fn add_pem_certificates(builder: &mut SslConnectorBuilder, pem: &[u8]) -> Result<usize, String> {
-    let certificates = X509::stack_from_pem(pem).map_err(|error| error.to_string())?;
-    let mut loaded = 0;
-    for certificate in certificates {
-        if builder.cert_store_mut().add_cert(certificate).is_ok() {
-            loaded += 1;
-        }
-    }
-    Ok(loaded)
 }
 
 fn split_https_url(url: &str) -> Result<(String, String), String> {
@@ -796,14 +710,6 @@ mod tests {
             build_search_url("golang"),
             "https://html.duckduckgo.com/html?api=%2Fd.js&dc=1&o=json&q=golang&s=0&v=1"
         );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn loads_macos_system_root_certificates() {
-        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        let loaded = load_macos_keychain_roots(&mut builder).unwrap();
-        assert!(loaded > 0);
     }
 
     #[test]

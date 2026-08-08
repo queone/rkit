@@ -48,7 +48,7 @@ fn version_is_terminal_and_exact() {
         .output()
         .unwrap();
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"pman v2.0.0\n");
+    assert_eq!(output.stdout, b"pman v2.0.1\n");
     assert!(output.stderr.is_empty());
 }
 
@@ -532,7 +532,7 @@ fn tcp_transport_decodes_chunked_response_bodies() {
 fn documentation_describes_azure_caller_behavior() {
     let readme = include_str!("../README.md");
     assert!(readme.contains("## pman"));
-    assert!(readme.contains("pman v2.0.0"));
+    assert!(readme.contains("pman v2.0.1"));
     assert!(readme.contains("azm"));
     let arch = include_str!("../arch.md");
     assert!(arch.contains("### pman"));

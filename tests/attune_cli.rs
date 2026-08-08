@@ -18,7 +18,7 @@ fn run(args: &[&str]) -> Output {
 fn version_is_build_compatible() {
     let output = run(&["--version"]);
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "attune 0.1.1\n");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "attune 0.1.2\n");
     assert!(output.stderr.is_empty());
 }
 

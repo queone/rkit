@@ -14,7 +14,7 @@ fn version_is_terminal_and_exact() {
         .output()
         .unwrap();
     assert!(output.status.success());
-    assert_eq!(output.stdout, b"cash5 v2.0.0\n");
+    assert_eq!(output.stdout, b"cash5 v2.0.1\n");
     assert!(output.stderr.is_empty());
 }
 
@@ -45,7 +45,7 @@ fn unknown_flag_is_rejected() {
 fn documentation_describes_cash5_behavior() {
     let readme = include_str!("../README.md");
     assert!(readme.contains("## cash5"));
-    assert!(readme.contains("cash5 v2.0.0"));
+    assert!(readme.contains("cash5 v2.0.1"));
     let arch = include_str!("../arch.md");
     assert!(arch.contains("### cash5"));
 }

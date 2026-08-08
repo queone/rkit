@@ -4,11 +4,16 @@
 
 Provide small, standalone Rust command-line utilities with deterministic
 behavior. Certificate and TLS operations use the pinned vendored OpenSSL
-dependency, vjoin uses pinned serde_json for ffprobe parsing, fr uses the
+dependency through one shared verified platform-trust boundary, vjoin uses
+pinned serde_json for ffprobe parsing, fr uses the
 pinned regex crate for its search/replace matching, and the other utilities
 avoid third-party runtime dependencies.
 
 ## System Summary
+
+All production TLS client connectors route through `src/tls.rs`. Certls uses it
+directly; pman supplies it to attune and sms; web and cash5 retain their local
+timeout-aware TCP transports while sharing the connector and trust store.
 
 The root Cargo package builds the `tree`, `dos2unix`, `brew-update`, `repoctl`,
 `certgen`, `certls`, `rn`, `rncap`, `rnlower`, `vdrop`, `vjoin`, `vkeep`, `bak`,
@@ -52,7 +57,9 @@ delegated Git clone/pull and repository build operations.
 - `src/dos2unix.rs`: CRLF parsing, preview, conversion, and diagnostics
 - `src/repoctl.rs`: repository discovery, operation execution, sorting, rendering, and diagnostics
 - `src/certgen.rs`: RSA key, CSR, certificate generation, artifact writing, and prompts
+- `src/attune/`: provider-neutral specification loading and Azure reconciliation through pman's verified HTTPS transport
 - `src/certls.rs`: verified TLS connection, certificate extraction, and reporting
+- `src/tls.rs`: shared peer-verifying OpenSSL connector and platform trust loading
 - `src/rn.rs`: byte-aware filename replacement, dry runs, and native renames
 - `src/rncap.rs`: interactive Unicode title-casing and entry renames
 - `src/rnlower.rs`: interactive Unicode lowercase conversion and entry renames
@@ -256,6 +263,7 @@ delegated Git clone/pull and repository build operations.
 2. Route token acquisition to `azm -tmg` or `azm -taz` by URL substring through an injectable `TokenSource`.
 3. Warn on stderr for a token not prefixed `eyJ` without blocking the request.
 4. Send the request through an injectable `HttpTransport`, printing the raw response body regardless of HTTP status.
+5. Construct production HTTPS connectors through `src/tls.rs`, preserving peer and hostname verification with OpenSSL paths and macOS Keychain roots.
 
 ### fr
 
@@ -272,7 +280,8 @@ delegated Git clone/pull and repository build operations.
 2. Reject `-v`/`--version` combined with another operand with a diagnostic; this deliberately diverges from Go, which silently treated the combined `-v` as the phone number.
 3. Resolve `~/.config/sms/config.ini` (honoring an absolute `XDG_CONFIG_HOME`), migrating a legacy `~/.smsrc` on first use: skip a symlink with a warning, warn and prefer the new path when both exist, and fall back to copy-plus-delete across a filesystem boundary.
 4. Parse the `[global]` `svcurl`/`svckey` pair from the resolved file with a hand-rolled INI reader; an unreadable or malformed file degrades to the same "not defined" diagnostics as Go's discarded `ini.LoadFile` error.
-5. POST the form-encoded `key`/`message`/`phone` fields through the reused `pman` `HttpTransport`; print `Error. HTTP error code = <status>` for a non-200 response and a contextual diagnostic for a transport failure.
+5. Reuse pman's HTTP transport and the shared verified TLS trust boundary.
+6. POST the form-encoded `key`/`message`/`phone` fields through the reused `pman` `HttpTransport`; print `Error. HTTP error code = <status>` for a non-200 response and a contextual diagnostic for a transport failure.
 
 ### jy
 
@@ -305,6 +314,7 @@ delegated Git clone/pull and repository build operations.
 3. Scrape `.result`/`.result__title a`/`.result__url`/`.result__snippet` via `scraper`, decoding each result's DuckDuckGo redirect-wrapper link.
 4. `-j` prints the results as JSON and returns; `--open N` opens the Nth result's link directly. Otherwise, when stdout and stdin are both terminals, open an injectable interactive picker (`nucleo-picker`-backed; a single `<title>  <truncated snippet>` line per row, since the crate has no split-preview-pane mechanism) — Enter opens the selected link, Esc/cancel is a silent no-op, matching Go's `go-fzf`-backed picker exactly including the cancel behavior. When not a terminal, fall back to a numbered list instead (`web`'s AC30 default). Every open path routes through an injectable `BrowserOpener` (the default system opener, or a `-b`/`--browser`-specified command).
 5. Apply the documented timeout/User-Agent/Referrer defaults whenever the corresponding flag and environment variable are both absent — deliberately diverging from Go, whose real behavior silently sent no timeout and empty headers in that case despite documenting the same defaults.
+6. Preserve its timeout-aware TCP transport while constructing the client connector through the shared verified TLS trust boundary.
 
 ### cash5
 
@@ -312,8 +322,9 @@ delegated Git clone/pull and repository build operations.
 2. On the default (no-flag) path, check connectivity via an injectable seam, then page through the primary NJ Lottery API for missing recent draws (year-long windows, 5x retry with backoff on a transient 500) — falling back to a `scraper`-based `lottonumbers.com` HTML scrape only on a primary 404.
 3. Display the last 10 draws, the current jackpot (live fetch with a cached-estimate fallback), the last winning numbers with any repeat history, and the closest prior 3+-number matches — all dates rendered in Eastern Time via a hand-rolled US-DST rule (valid for the entire post-2014-09-14 data range), not the operator's OS-local timezone.
 4. Generate 5 recommendations (most/least common by position, most frequent overall, hot last-30-days, consecutive-pair avoidance), each guaranteed absent from the full historical-winners set via a deterministic swap/lexicographic-search fallback chain.
-5. `-s`/`--stats`, `-m [N]`/`--match-analysis`, and `-o [N]` render statistics (chi-squared uniformity, birthday-paradox duplicates), match/pattern analysis, and an odds/EV table respectively; `-o`/`-m`'s optional-value parsing runs before general flag dispatch, matching Go's cobra-can't-do-optional-values pre-parse hack. `-v`/`--version` prints only the version, diverging from Go's full-usage-screen `-v`, matching the `mdview`/`retotal` fix.
-6. In an iTerm2 session (an injectable `TerminalCapability` seam, not a bare env read, so `run_daily`'s and `display_match_analysis`'s existing stdout-content tests stay deterministic), render the "winning circle" — numbers 1-45 around a ring, winners spoked and highlighted — via hand-plotted pixels on a raw RGBA buffer (`ab_glyph` for glyph rasterization, `png` for encoding, no canvas-drawing crate), then emit it as an iTerm2 inline image. One emission in the daily summary (last winning numbers); one per displayed draw in match analysis (governed by `-m N` exactly, no independent cap, matching Go).
+5. Preserve its timeout-aware primary and backup transports while constructing client connectors through the shared verified TLS trust boundary.
+6. `-s`/`--stats`, `-m [N]`/`--match-analysis`, and `-o [N]` render statistics (chi-squared uniformity, birthday-paradox duplicates), match/pattern analysis, and an odds/EV table respectively; `-o`/`-m`'s optional-value parsing runs before general flag dispatch, matching Go's cobra-can't-do-optional-values pre-parse hack. `-v`/`--version` prints only the version, diverging from Go's full-usage-screen `-v`, matching the `mdview`/`retotal` fix.
+7. In an iTerm2 session (an injectable `TerminalCapability` seam, not a bare env read, so `run_daily`'s and `display_match_analysis`'s existing stdout-content tests stay deterministic), render the "winning circle" — numbers 1-45 around a ring, winners spoked and highlighted — via hand-plotted pixels on a raw RGBA buffer (`ab_glyph` for glyph rasterization, `png` for encoding, no canvas-drawing crate), then emit it as an iTerm2 inline image. One emission in the daily summary (last winning numbers); one per displayed draw in match analysis (governed by `-m N` exactly, no independent cap, matching Go).
 
 ### swatch
 

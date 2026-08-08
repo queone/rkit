@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-const PROGRAM_VERSION: &str = "2.0.0";
+const PROGRAM_VERSION: &str = "2.0.1";
 
 fn main() -> ExitCode {
     let mut stdout = io::stdout();

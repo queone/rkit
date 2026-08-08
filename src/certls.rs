@@ -1,12 +1,10 @@
 //! Verified TLS certificate inspection.
 
 use openssl::asn1::Asn1TimeRef;
-use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslVerifyMode};
+use openssl::ssl::SslConnector;
 use openssl::x509::X509;
 use std::io::Write;
 use std::net::TcpStream;
-#[cfg(target_os = "macos")]
-use std::process::Command;
 
 const PROGRAM_NAME: &str = "certls";
 
@@ -18,84 +16,11 @@ where
     W: Write,
     E: Write,
 {
-    let mut builder = match SslConnector::builder(SslMethod::tls()) {
-        Ok(builder) => builder,
-        Err(error) => return fail(stderr, "create TLS connector", error.to_string()),
+    let connector = match crate::tls::connector() {
+        Ok(connector) => connector,
+        Err(error) => return fail(stderr, "configure TLS trust", error),
     };
-    builder.set_verify(SslVerifyMode::PEER);
-    if let Err(error) = configure_trust(&mut builder) {
-        return fail(stderr, "load trusted certificate paths", error);
-    }
-    let connector = builder.build();
     run_with_connector(args, version, &connector, stdout, stderr)
-}
-
-fn configure_trust(builder: &mut SslConnectorBuilder) -> Result<(), String> {
-    let default_error = builder
-        .set_default_verify_paths()
-        .err()
-        .map(|error| error.to_string());
-
-    #[cfg(target_os = "macos")]
-    {
-        let keychain_error = load_macos_keychain_roots(builder).err();
-        if default_error.is_some() && keychain_error.is_some() {
-            return Err(format!(
-                "default paths: {}; macOS keychain: {}",
-                default_error.unwrap_or_default(),
-                keychain_error.unwrap_or_default()
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    default_error.map_or(Ok(()), Err)
-}
-
-#[cfg(target_os = "macos")]
-fn load_macos_keychain_roots(builder: &mut SslConnectorBuilder) -> Result<usize, String> {
-    let keychains = [
-        "/System/Library/Keychains/SystemRootCertificates.keychain",
-        "/Library/Keychains/System.keychain",
-    ];
-    let mut loaded = 0;
-    let mut last_error = None;
-    for path in keychains {
-        let output = match Command::new("/usr/bin/security")
-            .args(["find-certificate", "-a", "-p", path])
-            .output()
-        {
-            Ok(output) => output,
-            Err(error) => {
-                last_error = Some(error.to_string());
-                continue;
-            }
-        };
-        if !output.status.success() {
-            last_error = Some(String::from_utf8_lossy(&output.stderr).trim().to_string());
-            continue;
-        }
-        match add_pem_certificates(builder, &output.stdout) {
-            Ok(count) => loaded += count,
-            Err(error) => last_error = Some(error),
-        }
-    }
-    if loaded == 0 {
-        return Err(last_error.unwrap_or_else(|| "no macOS keychain certificates found".into()));
-    }
-    Ok(loaded)
-}
-
-fn add_pem_certificates(builder: &mut SslConnectorBuilder, pem: &[u8]) -> Result<usize, String> {
-    let certificates = X509::stack_from_pem(pem).map_err(|error| error.to_string())?;
-    let mut loaded = 0;
-    for certificate in certificates {
-        if builder.cert_store_mut().add_cert(certificate).is_ok() {
-            loaded += 1;
-        }
-    }
-    Ok(loaded)
 }
 
 /// Run certls with an injected connector for deterministic tests.
@@ -240,15 +165,6 @@ fn format_time(value: &Asn1TimeRef) -> String {
 #[cfg(test)]
 mod tests {
     use super::parse_target;
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn loads_macos_system_root_certificates() {
-        let mut builder =
-            openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls()).unwrap();
-        let loaded = super::load_macos_keychain_roots(&mut builder).unwrap();
-        assert!(loaded > 0);
-    }
 
     #[test]
     fn target_parser_defaults_port_and_rejects_malformed_shapes() {
