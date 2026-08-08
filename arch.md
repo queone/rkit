@@ -58,6 +58,7 @@ delegated Git clone/pull and repository build operations.
 - `src/repoctl.rs`: repository discovery, operation execution, sorting, rendering, and diagnostics
 - `src/certgen.rs`: RSA key, CSR, certificate generation, artifact writing, and prompts
 - `src/attune/`: provider-neutral specification loading and Azure reconciliation through pman's verified HTTPS transport
+- `examples/attune/`: synthetic six-kind project for offline validation and public usage guidance
 - `src/certls.rs`: verified TLS connection, certificate extraction, and reporting
 - `src/tls.rs`: shared peer-verifying OpenSSL connector and platform trust loading
 - `src/rn.rs`: byte-aware filename replacement, dry runs, and native renames
@@ -264,6 +265,7 @@ delegated Git clone/pull and repository build operations.
 3. Warn on stderr for a token not prefixed `eyJ` without blocking the request.
 4. Send the request through an injectable `HttpTransport`, printing the raw response body regardless of HTTP status.
 5. Construct production HTTPS connectors through `src/tls.rs`, preserving peer and hostname verification with OpenSSL paths and macOS Keychain roots.
+6. Keep reconciliation ordering, prune gates, scope comparison, and tag-merge behavior covered by injected-provider tests; keep the public six-kind example offline-validatable without live identifiers.
 
 ### fr
 

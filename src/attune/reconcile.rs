@@ -512,8 +512,16 @@ mod tests {
         assert!(dns_protected(&item));
     }
 
+    #[derive(Default)]
     struct AssignmentProvider {
-        live: Vec<LiveAssignment>,
+        assignments: Vec<LiveAssignment>,
+        dns: Vec<DnsRecord>,
+        groups: Vec<SecurityGroup>,
+        group_names: Vec<String>,
+        apps: Vec<AppRegistration>,
+        app_names: Vec<String>,
+        role_definitions: Vec<RoleDefinition>,
+        resource_groups: Vec<ResourceGroup>,
     }
 
     impl Provider for AssignmentProvider {
@@ -521,7 +529,7 @@ mod tests {
             Ok(())
         }
         fn list_dns(&mut self, _: &str) -> Result<Vec<DnsRecord>, String> {
-            Ok(vec![])
+            Ok(self.dns.clone())
         }
         fn put_dns(&mut self, _: &DnsRecord) -> Result<(), String> {
             Ok(())
@@ -529,11 +537,11 @@ mod tests {
         fn delete_dns(&mut self, _: &DnsRecord) -> Result<(), String> {
             Ok(())
         }
-        fn get_group(&mut self, _: &str) -> Result<Option<SecurityGroup>, String> {
-            Ok(None)
+        fn get_group(&mut self, name: &str) -> Result<Option<SecurityGroup>, String> {
+            Ok(self.groups.iter().find(|item| item.name == name).cloned())
         }
         fn list_group_names(&mut self) -> Result<Vec<String>, String> {
-            Ok(vec![])
+            Ok(self.group_names.clone())
         }
         fn put_group(&mut self, _: &SecurityGroup) -> Result<(), String> {
             Ok(())
@@ -541,11 +549,11 @@ mod tests {
         fn delete_group(&mut self, _: &str) -> Result<(), String> {
             Ok(())
         }
-        fn get_app(&mut self, _: &str) -> Result<Option<AppRegistration>, String> {
-            Ok(None)
+        fn get_app(&mut self, name: &str) -> Result<Option<AppRegistration>, String> {
+            Ok(self.apps.iter().find(|item| item.name == name).cloned())
         }
         fn list_app_names(&mut self) -> Result<Vec<String>, String> {
-            Ok(vec![])
+            Ok(self.app_names.clone())
         }
         fn put_app(&mut self, _: &AppRegistration) -> Result<(), String> {
             Ok(())
@@ -554,7 +562,7 @@ mod tests {
             Ok(())
         }
         fn list_role_definitions(&mut self, _: &str) -> Result<Vec<RoleDefinition>, String> {
-            Ok(vec![])
+            Ok(self.role_definitions.clone())
         }
         fn put_role_definition(&mut self, _: &RoleDefinition, _: &str) -> Result<(), String> {
             Ok(())
@@ -569,7 +577,7 @@ mod tests {
             Ok(format!("role-{name}"))
         }
         fn list_role_assignments(&mut self, _: &str) -> Result<Vec<LiveAssignment>, String> {
-            Ok(self.live.clone())
+            Ok(self.assignments.clone())
         }
         fn put_role_assignment(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> {
             Ok(())
@@ -578,7 +586,7 @@ mod tests {
             Ok(())
         }
         fn list_resource_groups(&mut self) -> Result<Vec<ResourceGroup>, String> {
-            Ok(vec![])
+            Ok(self.resource_groups.clone())
         }
         fn put_resource_group(&mut self, _: &ResourceGroup) -> Result<(), String> {
             Ok(())
@@ -612,7 +620,7 @@ mod tests {
             ..Bundle::default()
         };
         let mut provider = AssignmentProvider {
-            live: vec![
+            assignments: vec![
                 LiveAssignment {
                     id: "assignment-one".into(),
                     principal_id: "id-one".into(),
@@ -626,6 +634,7 @@ mod tests {
                     scope: scope.arm_id("").unwrap(),
                 },
             ],
+            ..AssignmentProvider::default()
         };
         let changes = plan(
             &mut provider,
@@ -638,5 +647,232 @@ mod tests {
         )
         .unwrap();
         assert!(changes.is_empty());
+    }
+
+    fn scope(subscription: &str) -> Scope {
+        Scope {
+            subscription: subscription.into(),
+            ..Scope::default()
+        }
+    }
+
+    fn role(name: &str, scopes: Vec<Scope>) -> RoleDefinition {
+        RoleDefinition {
+            name: name.into(),
+            description: "synthetic role".into(),
+            assignable_scopes: scopes,
+            actions: vec!["Microsoft.Network/dnsZones/read".into()],
+            not_actions: vec![],
+            data_actions: vec![],
+            not_data_actions: vec![],
+        }
+    }
+
+    fn resource_group(name: &str, tags: &[(&str, &str)]) -> ResourceGroup {
+        ResourceGroup {
+            name: name.into(),
+            location: "eastus".into(),
+            tags: tags
+                .iter()
+                .map(|(key, value)| ((*key).into(), (*value).into()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn plans_every_kind_in_legacy_compatible_order() {
+        let subscription = "00000000-0000-0000-0000-000000000001";
+        let bundle = Bundle {
+            resource_groups: vec![resource_group("resources", &[])],
+            groups: vec![SecurityGroup {
+                name: "readers".into(),
+                owners: vec![],
+                members: vec![],
+            }],
+            apps: vec![AppRegistration {
+                name: "application".into(),
+                owners: vec![],
+                service_principal: true,
+            }],
+            role_definitions: vec![role("reader", vec![scope(subscription)])],
+            role_assignments: vec![RoleAssignment {
+                principal: "readers".into(),
+                principal_type: "group".into(),
+                role: "reader".into(),
+                scope: scope(subscription),
+            }],
+            dns: vec![DnsRecord {
+                zone: "example.com".into(),
+                record_type: "A".into(),
+                name: "docs".into(),
+                ttl: 300,
+                values: vec!["192.0.2.10".into()],
+            }],
+        };
+        let changes = plan(
+            &mut AssignmentProvider::default(),
+            &bundle,
+            &Options {
+                subscription: subscription.into(),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            changes.iter().map(|change| change.kind).collect::<Vec<_>>(),
+            [
+                "resourceGroup",
+                "securityGroup",
+                "appRegistration",
+                "roleDefinition",
+                "roleAssignment",
+                "dnsRecordSet",
+            ]
+        );
+    }
+
+    #[test]
+    fn identity_and_resource_group_pruning_respects_policy() {
+        let bundle = Bundle {
+            groups: vec![SecurityGroup {
+                name: "wanted-group".into(),
+                owners: vec![],
+                members: vec![],
+            }],
+            apps: vec![AppRegistration {
+                name: "wanted-app".into(),
+                owners: vec![],
+                service_principal: false,
+            }],
+            resource_groups: vec![resource_group("wanted-resources", &[])],
+            ..Bundle::default()
+        };
+        let provider = || AssignmentProvider {
+            group_names: vec!["wanted-group".into(), "stale-group".into()],
+            app_names: vec!["wanted-app".into(), "stale-app".into()],
+            resource_groups: vec![
+                resource_group("wanted-resources", &[]),
+                resource_group("stale-resources", &[]),
+            ],
+            ..AssignmentProvider::default()
+        };
+
+        let changes = plan(&mut provider(), &bundle, &Options::default()).unwrap();
+        assert!(!changes.iter().any(|change| change.action == Action::Delete));
+
+        let changes = plan(
+            &mut provider(),
+            &bundle,
+            &Options {
+                prune_identities: true,
+                prune_resource_groups: true,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let deleted: Vec<_> = changes
+            .iter()
+            .filter(|change| change.action == Action::Delete)
+            .map(|change| change.key.as_str())
+            .collect();
+        assert_eq!(
+            deleted,
+            [
+                "resourceGroup|stale-resources",
+                "securityGroup|stale-group",
+                "appRegistration|stale-app",
+            ]
+        );
+    }
+
+    #[test]
+    fn role_definition_scope_comparison_detects_only_real_drift() {
+        let subscription = "00000000-0000-0000-0000-000000000001";
+        let resource_scope = Scope {
+            subscription: subscription.into(),
+            resource_group: "resources".into(),
+            ..Scope::default()
+        };
+        let desired = role("reader", vec![scope(subscription), resource_scope.clone()]);
+        let bundle = Bundle {
+            role_definitions: vec![desired.clone()],
+            ..Bundle::default()
+        };
+        let mut drifted = AssignmentProvider {
+            role_definitions: vec![role(
+                "reader",
+                vec![scope("00000000-0000-0000-0000-000000000002")],
+            )],
+            ..AssignmentProvider::default()
+        };
+        let changes = plan(
+            &mut drifted,
+            &bundle,
+            &Options {
+                subscription: subscription.into(),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].action, Action::Update);
+
+        let mut equivalent = AssignmentProvider {
+            role_definitions: vec![role(
+                "reader",
+                vec![resource_scope.clone(), scope(subscription), resource_scope],
+            )],
+            ..AssignmentProvider::default()
+        };
+        assert!(
+            plan(
+                &mut equivalent,
+                &bundle,
+                &Options {
+                    subscription: subscription.into(),
+                    ..Options::default()
+                }
+            )
+            .unwrap()
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn resource_group_updates_merge_declared_tags_only_when_needed() {
+        let bundle = Bundle {
+            resource_groups: vec![resource_group("resources", &[("managed", "new")])],
+            ..Bundle::default()
+        };
+        let mut provider = AssignmentProvider {
+            resource_groups: vec![resource_group(
+                "resources",
+                &[("managed", "old"), ("preserved", "live")],
+            )],
+            ..AssignmentProvider::default()
+        };
+        let changes = plan(&mut provider, &bundle, &Options::default()).unwrap();
+        assert_eq!(changes.len(), 1);
+        let Target::ResourceGroup(updated) = &changes[0].target else {
+            panic!("expected resource-group update")
+        };
+        assert_eq!(updated.tags.get("managed").map(String::as_str), Some("new"));
+        assert_eq!(
+            updated.tags.get("preserved").map(String::as_str),
+            Some("live")
+        );
+
+        let mut satisfied = AssignmentProvider {
+            resource_groups: vec![resource_group(
+                "resources",
+                &[("managed", "new"), ("preserved", "live")],
+            )],
+            ..AssignmentProvider::default()
+        };
+        assert!(
+            plan(&mut satisfied, &bundle, &Options::default())
+                .unwrap()
+                .is_empty()
+        );
     }
 }

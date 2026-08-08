@@ -113,6 +113,10 @@ attune plan                  # read live state and show changes
 attune apply                 # create, update, and permitted prune operations
 ```
 
+See the [synthetic attune example](examples/attune/) for a complete six-resource
+bundle. Validation is offline; planning and applying require authentication and
+deliberate replacement and review of every documented placeholder.
+
 Live commands require an authenticated Azure CLI session from `az login`.
 Configuration is read from the nearest `attune.yaml`; precedence is flag,
 environment, configuration file, then built-in default. DNS pruning defaults
