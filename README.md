@@ -16,7 +16,8 @@ for sending SMS messages via textbelt.com, `jy` for converting between JSON
 and YAML, `mdview` for viewing GitHub Flavored Markdown in a browser or
 writing it as HTML, `retotal` for consolidating and re-tallying financial
 TOTALS, `web` for searching DuckDuckGo from the command line, and `cash5` for
-NJ Cash 5 lottery data, statistics, and number recommendations.
+NJ Cash 5 lottery data, statistics, and number recommendations, plus `swatch`
+for inspecting xterm colors and rkit ramp tables.
 
 ## Why
 
@@ -32,6 +33,35 @@ its interactive result picker; `cash5` additionally uses the pinned
 `ab_glyph` and `png` crates for its iTerm2 "winning circle" image
 rendering; and the other utilities use the Rust standard library and
 shared package code.
+
+## swatch
+
+```text
+swatch v1.0.0
+Xterm palette and rkit ramp inspector
+```
+
+`swatch` prints the complete xterm 256-color palette and eleven rkit-owned
+11-step ramp tables. Its primary subcommands and full-word aliases are
+`p, palette` for the complete palette, `g, grid` for a bordered foreground
+grid, and `b, backgrounds` for background-ramp swatch rows. An omitted or
+empty sample token defaults to `TOKEN`.
+
+Use `g -r`/`g --reverse` to render ramp colors as cell backgrounds and add
+`-f INDEX`/`--foreground INDEX` to select the cell text color. The background
+view accepts the same foreground option and otherwise selects xterm black 16
+or bright white 15 for contrast. Indices must be between 0 and 255.
+
+Color appears only on a supported terminal when `NO_COLOR` is absent. Plain
+output preserves every label, border, index, token, and layout. The utility
+uses only the Rust standard library and existing rkit shared code.
+
+```bash
+swatch p
+swatch palette
+swatch g --reverse HEADER
+swatch b --foreground 15 LABEL
+```
 
 ## Install
 

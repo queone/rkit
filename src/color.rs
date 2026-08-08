@@ -1,8 +1,8 @@
 use std::env;
 use std::io::{self, IsTerminal};
 
-// Shared 256-color ANSI codes, sourced from governa-color. Used by `jy`;
-// add more as future utilities need them.
+// Shared rkit 256-color ANSI codes. Used by `jy`; add more as future
+// utilities need them.
 pub(crate) const BLUE5: &str = "38;5;21";
 pub(crate) const BLUE7: &str = "38;5;33";
 pub(crate) const GRAY5: &str = "38;5;245";

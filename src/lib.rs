@@ -21,6 +21,7 @@ pub mod rn;
 pub mod rncap;
 pub mod rnlower;
 pub mod sms;
+pub mod swatch;
 pub mod tree;
 pub mod video_edit;
 pub mod vjoin;

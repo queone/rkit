@@ -13,7 +13,7 @@ avoid third-party runtime dependencies.
 The root Cargo package builds the `tree`, `dos2unix`, `brew-update`, `repoctl`,
 `certgen`, `certls`, `rn`, `rncap`, `rnlower`, `vdrop`, `vjoin`, `vkeep`, `bak`,
 `days`, `decolor`, `dl`, `pgen`, `pman`, `fr`, `sms`, `jy`, `mdview`,
-`retotal`, `web`, and `cash5` binaries. Each binary
+`retotal`, `web`, `cash5`, and `swatch` binaries. Each binary
 keeps process streams and exit codes at its entrypoint and delegates testable
 behavior to a namespaced `rkit` library module. The package reads the local
 filesystem and writes to standard output and standard error; file mutation is
@@ -47,6 +47,7 @@ delegated Git clone/pull and repository build operations.
 - `src/bin/retotal.rs`: `retotal` process streams and exit-code boundary
 - `src/bin/web.rs`: `web` process streams and exit-code boundary
 - `src/bin/cash5.rs`: `cash5` process streams and exit-code boundary
+- `src/bin/swatch.rs`: `swatch` process streams and exit-code boundary
 - `src/tree.rs`: tree parsing, traversal, path handling, and rendering
 - `src/dos2unix.rs`: CRLF parsing, preview, conversion, and diagnostics
 - `src/repoctl.rs`: repository discovery, operation execution, sorting, rendering, and diagnostics
@@ -71,6 +72,7 @@ delegated Git clone/pull and repository build operations.
 - `src/retotal.rs`: CSV/aligned parsing, two-stage numeric formatting, signature-gated consolidate/re-tally dispatch
 - `src/web.rs`: DuckDuckGo query building, a timeout-aware HTTPS transport, CSS-selector HTML scraping, an injectable interactive result picker (`nucleo-picker`-backed) with a TTY-gated numbered-list fallback, JSON output, and browser-opening (reusing `mdview`'s `BrowserOpener`)
 - `src/cash5/`: NJ Cash 5 draw fetching (primary API plus `scraper`-based `lottonumbers.com` backup), XDG state persistence with legacy-era pruning, a collision-avoiding recommendation engine, statistics, match analysis, an odds table, iTerm2 "winning circle" image rendering, and CLI dispatch — one submodule per Go source-file concern (`api`, `dates`, `display`, `match_analysis`, `model`, `recommend`, `render`, `stats`, `store`, `strategy`)
+- `src/swatch.rs`: argument parsing, rkit-owned xterm ramp tables, palette/grid/background rendering, contrast selection, and injectable color-mode coverage
 - `src/gomono.ttf`, `src/gomono-LICENSE`: embedded, SHA-256-pinned "Go Mono" TrueType font (extracted from `golang.org/x/image/font/gofont/gomono`) and its BSD-3-Clause license
 - `src/color.rs`: shared terminal color policy
 - `src/lib.rs`: narrow package-binary library boundary
@@ -98,6 +100,7 @@ delegated Git clone/pull and repository build operations.
 - `tests/retotal_cli.rs`: compiled `retotal` consolidate/re-tally, signature, and version coverage
 - `tests/web_cli.rs`: compiled `web` argument-validation, diagnostics, and version coverage
 - `tests/cash5_cli.rs`: compiled `cash5` argument-validation, diagnostics, and version coverage
+- `tests/swatch_cli.rs`: compiled `swatch` shorthand, alias, rendering, diagnostics, and documentation coverage
 - `tests/build_cli.sh`: build routing and release-safety coverage
 - `build.sh`: isolated Cargo validation and package-binary installation
 
@@ -311,6 +314,15 @@ delegated Git clone/pull and repository build operations.
 4. Generate 5 recommendations (most/least common by position, most frequent overall, hot last-30-days, consecutive-pair avoidance), each guaranteed absent from the full historical-winners set via a deterministic swap/lexicographic-search fallback chain.
 5. `-s`/`--stats`, `-m [N]`/`--match-analysis`, and `-o [N]` render statistics (chi-squared uniformity, birthday-paradox duplicates), match/pattern analysis, and an odds/EV table respectively; `-o`/`-m`'s optional-value parsing runs before general flag dispatch, matching Go's cobra-can't-do-optional-values pre-parse hack. `-v`/`--version` prints only the version, diverging from Go's full-usage-screen `-v`, matching the `mdview`/`retotal` fix.
 6. In an iTerm2 session (an injectable `TerminalCapability` seam, not a bare env read, so `run_daily`'s and `display_match_analysis`'s existing stdout-content tests stay deterministic), render the "winning circle" — numbers 1-45 around a ring, winners spoked and highlighted — via hand-plotted pixels on a raw RGBA buffer (`ab_glyph` for glyph rasterization, `png` for encoding, no canvas-drawing crate), then emit it as an iTerm2 inline image. One emission in the daily summary (last winning numbers); one per displayed draw in match analysis (governed by `-m N` exactly, no independent cap, matching Go).
+
+### swatch
+
+1. Parse primary subcommands `p, palette`, `g, grid`, and `b, backgrounds` through one shorthand-and-alias command boundary.
+2. Render the standard 16 colors, 216-color cube, grayscale range, and eleven rkit-owned 11-step ramps without a third-party dependency.
+3. Render foreground grids, reverse-mode background grids, and background-ramp rows through the shared terminal color policy.
+4. Select xterm black 16 or bright white 15 for automatic background contrast, or validate and apply a caller-selected foreground index.
+5. Preserve labels, borders, indices, tokens, and layout when color is disabled.
+6. Inject color mode internally for deterministic rendering tests while keeping process streams at the binary entrypoint.
 
 ## AC Lifecycle Control Flow
 
